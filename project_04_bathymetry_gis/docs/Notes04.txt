@@ -1,0 +1,5 @@
+This script shows the topography and seafloor elevation of Western Pacific (Japan and the Mariana Trench) where the data was extracted from a NOAA server. ETOPO 2022 was used as it combines ocean soundings, satellite altrimetry, and land topograpphy into a unified resolution grid.
+Firstly we get the data from the server, then we isolate the the elevation data and slice the lat and lon of our proposed region. 
+We apply all negative depth (bathy <0) condition and turn the positive land values into blank(NaN). 
+We use (pcolormesh) to get high resolution grid of ocean depths and use ('Blue_r') to make contour blue shades where shallow water are light blue and deep water trenches dark blue. 
+Finally we lock the color scale between 8000m to 0m with ( vmin=8000 and vmax=0) to be able to interpret the map.

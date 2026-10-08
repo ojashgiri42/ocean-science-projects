@@ -1,0 +1,11 @@
+This script builds a synthetic (analytic) Sea Surface Height field shaped like the Gulf Stream region (no satellite data is used) and calculates the resulting geostrophic currents (ug, vg) and kinetic energy per unit mass of the geostrophic flow (labelled EKE in the code; true EKE requires removing a time mean, which is not possible for a single synthetic snapshot). Radar altimeters on satellites measure ocean surface elevations down to the centimeter. Because Earth rotates, water sliding down a sea surface slope is deflected by the Coriolis force until the pressure gradient and Coriolis forces balance (Geostrophic Balance). 
+
+Firstly we set up the grid and simulating sea surface height. (background ) is used as it models the main Gulf Stream front and (eddy_warm) simulates warm core anticyclonic eddy and (eddy_cold) simulates cold. (meander) is used to add wave-like bend in the current path.
+
+Secondly, we define the value to the constants and add the formula for coriolis parameter. We then need to convert the grid step from degrees to physical meters using cosine latitude adjustments
+
+Third, we compute the slopes and apply geostrophic balance equations to calculate current vectors for computing EKE.
+
+Fourth, we calculate the EKE and plot the map. We overlay datas and use (quiver) to essentially equate and draw vector arrows to represent the current speed and direction(takes the 6th grid point to avoid crowding). Finally we add (contour) for distinct visualization of the map. 
+
+Finally we lock the plot bounds to the region extent (set_extent) and format map coastlines and landmasses to easily identify cyclonic and anticyclonic eddy circulation patterns.

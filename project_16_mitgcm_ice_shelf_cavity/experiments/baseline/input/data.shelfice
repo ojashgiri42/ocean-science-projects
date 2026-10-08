@@ -1,0 +1,14 @@
+# ===================================
+# | Parameters for SHELFICE package |
+# ===================================
+ &SHELFICE_PARM01
+ SHELFICEboundaryLayer = .TRUE.,
+ SHELFICEtopoFile='icetopo.exp1',
+ SHELFICEloadAnomalyFile = 'phi0surf.exp1.jmd95z',
+# project 16: three-equation melt model (Holland and Jenkins 1999) instead of the
+# simple ISOMIP formula; transfer coefficients stay at their constant defaults
+ useISOMIPTD = .FALSE.,
+ SHELFICEuseGammaFrict = .FALSE.,
+ no_slip_shelfice = .false.,
+ SHELFICEwriteState = .TRUE.,
+ &

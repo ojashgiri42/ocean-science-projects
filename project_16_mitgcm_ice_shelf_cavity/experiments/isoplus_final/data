@@ -1,0 +1,82 @@
+# ====================================================================
+# Project 16 step 7: ISOMIP+ Ocean0 (Asay-Davis et al. 2016) at 4 km.
+# Values from the paper's Table 4 (COM parameters) unless noted.
+# ====================================================================
+ &PARM01
+# linear equation of state (Sect. 3.1.7, Table 4): Tref, Sref, rho_ref, alpha, beta
+ eosType='LINEAR',
+ tRef=36*-1.0,
+ sRef=36*34.2,
+ rhoNil=1027.51,
+ tAlpha=3.733E-5,
+ sBeta=7.843E-4,
+# reference densities of seawater and fresh water, heat capacity, gravity
+ rhoConst=1028.,
+ rhoConstFresh=1000.,
+ HeatCapacity_cp=3974.,
+ gravity=9.81,
+# f-plane at 75 S (Sect. 3.1.1): f = 2 x 7.2921e-5 x sin(-75 deg)
+ f0=-1.4087E-4,
+ beta=0.,
+# mixing (Table 4): horizontal viscosity 6, diffusivity 1; vertical 1e-3 and 5e-5 m^2/s
+ viscAh=6.0,
+ viscAz=1.E-3,
+ diffKhT=1.0,
+ diffKhS=1.0,
+ diffKzT=5.E-5,
+ diffKzS=5.E-5,
+# convective mixing 0.1 m^2/s where the water is unstably stratified (Table 4)
+ ivdc_kappa=0.1,
+ implicitDiffusion=.TRUE.,
+ implicitViscosity=.TRUE.,
+# no-slip walls (Sect. 3.1.4) and quadratic drag 2.5e-3 at the seabed (Table 4)
+ no_slip_sides=.TRUE.,
+ no_slip_bottom=.FALSE.,
+ bottomDragQuadratic=2.5E-3,
+# flux-limited advection for temperature and salinity (not specified by ISOMIP+;
+# chosen because the centred scheme blew up under a sharp fresh cap in step 6)
+ tempAdvScheme=33,
+ saltAdvScheme=33,
+# free surface, partial cells, input format
+ rigidLid=.FALSE.,
+ implicitFreeSurface=.TRUE.,
+ exactConserv=.TRUE.,
+# partial cells at least 20% open (4 m): with 0.1 (2 m) the vertical CFL in thin
+# cells under the ice passed 1 within 10 days and the run blew up
+ hFacMin=0.2,
+ readBinaryPrec=64,
+ globalFiles=.TRUE.,
+ &
+ &PARM02
+ cg2dMaxIters=1000,
+ cg2dTargetResidual=1.E-13,
+ &
+ &PARM03
+ nIter0=0,
+# 300 s time step (600 s was unstable, see hFacMin); calibration runs are 1 year
+# = 105190 steps of 300 s, using 365.2422-day years
+# isoplus_final: 2 ISOMIP+ years (2 x 365.2422 days of 300 s steps), with the calibrated Gamma_T
+ nTimeSteps=210380,
+ deltaT=300.0,
+ abEps=0.1,
+# restart file every 365.2422-day year; monitor and bounds check every 30 days
+ pChkptFreq=31556926.,
+ dumpFreq=0.,
+ monitorFreq=2592000.,
+ &
+ &PARM04
+# Cartesian grid: 121 x 21 cells of 4 km, starting with one land column (316-320 km)
+# and one land row (y = -4-0 km); 36 layers of 20 m (Sect. 3.1.5)
+ usingCartesianGrid=.TRUE.,
+ xgOrigin=316000.,
+ ygOrigin=-4000.,
+ delX=121*4000.,
+ delY=21*4000.,
+ delZ=36*20.,
+ &
+ &PARM05
+ bathyFile='bathy_isoplus.bin',
+# WARM initial temperature and salinity (Sect. 3.2.1, Table 6)
+ hydrogThetaFile='theta_warm.bin',
+ hydrogSaltFile='salt_warm.bin',
+ &

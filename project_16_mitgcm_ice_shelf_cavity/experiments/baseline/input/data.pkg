@@ -1,0 +1,7 @@
+# Packages
+ &PACKAGES
+ useShelfIce=.TRUE.,
+# project 16: averaged output through pkg/diagnostics
+ useDiagnostics=.TRUE.,
+#useMNC=.TRUE.,
+ &

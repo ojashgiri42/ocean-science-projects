@@ -1,0 +1,13 @@
+# Output for project 16 step 7 (ISOMIP+ Ocean0). Times in seconds.
+ &DIAGNOSTICS_LIST
+# 30-day means of the ice-shelf fluxes (SHIfwFlx is positive UPWARD: melting is negative)
+  fields(1:4,1) = 'SHIfwFlx','SHIhtFlx','SHIgammT','SHIuStar',
+  fileName(1) = 'shelfice_monthly',
+  frequency(1) = 2592000.,
+# 30-day means of the 3D ocean state
+  fields(1:4,2) = 'THETA   ','SALT    ','UVEL    ','VVEL    ',
+  fileName(2) = 'state_monthly',
+  frequency(2) = 2592000.,
+ &
+ &DIAG_STATIS_PARMS
+ &

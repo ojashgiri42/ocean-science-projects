@@ -1,0 +1,6 @@
+run,gamma_t,deep_melt_last6months_m_per_yr_we,whole_shelf_melt_last6months_m_per_yr_we
+isoplus_g025,0.025,15.716,
+isoplus_g050,0.05,31.059,
+isoplus_g100,0.1,50.986,
+isoplus_g200,0.2,67.455,
+isoplus_final,0.0483,29.527,10.786

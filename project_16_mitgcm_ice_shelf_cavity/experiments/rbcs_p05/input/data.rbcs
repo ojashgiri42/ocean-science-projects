@@ -1,0 +1,19 @@
+# Restoring (relaxation) zone for project 16, step 3, case rbcs_p05.
+# Tendency added: -mask x (field - target) / tau, only where the mask is non-zero.
+ &RBCS_PARM01
+# restore both temperature and salinity
+ useRBCtemp=.TRUE.,
+ useRBCsalt=.TRUE.,
+# restoring time scale at full mask strength: 10 days (in seconds)
+ tauRelaxT=864000.,
+ tauRelaxS=864000.,
+# mask 1 is used for temperature, mask 2 for salinity; if mask 2 is not set,
+# salinity is NOT restored (pkg/rbcs only prints a warning), so set both
+ relaxMaskFile(1)='rbcs_mask.bin',
+ relaxMaskFile(2)='rbcs_mask.bin',
+# targets: far-field temperature -1.4 degC and salinity 34.4 g/kg everywhere
+ relaxTFile='theta_rbcs_p05.bin',
+ relaxSFile='salt_34p4.bin',
+ &
+ &RBCS_PARM02
+ &

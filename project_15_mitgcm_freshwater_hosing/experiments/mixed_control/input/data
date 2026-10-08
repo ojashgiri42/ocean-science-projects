@@ -1,0 +1,98 @@
+# ====================
+# | Model parameters |
+# ====================
+#
+# Continuous equation parameters
+ &PARM01
+ tRef = 15*20.,
+ sRef = 15*35.,
+ viscAr=1.E-3,
+ viscAh=5.E5,
+ diffKhT=0.,
+ diffKrT=3.E-5,
+ diffKhS=0.,
+ diffKrS=3.E-5,
+ rhoConst=1035.,
+ rhoConstFresh=1000.,
+ eosType = 'JMD95Z',
+ ivdc_kappa=100.,
+ implicitDiffusion=.TRUE.,
+ allowFreezing=.TRUE.,
+ exactConserv=.TRUE.,
+ useRealFreshWaterFlux=.TRUE.,
+ useCDscheme=.TRUE.,
+# turn on looped cells
+ hFacMin=.05,
+ hFacMindr=50.,
+# set precision of data files
+ readBinaryPrec=32,
+# project 15: write each output as one global file instead of one file per tile
+ globalFiles=.TRUE.,
+ &
+
+# Elliptic solver parameters
+ &PARM02
+ cg2dMaxIters=500,
+ cg2dTargetResidual=1.E-13,
+ &
+
+# Time stepping parameters
+ &PARM03
+# project 15 mixed_control: start from the spin-up pickup at step 720000
+ nIter0=       720000,
+# project 15 mixed_control: 500 years (2001-2500), no hosing
+ nTimeSteps = 180000,
+# 100 years of integration will yield a reasonable flow field
+# startTime =          0.,
+# endTime   = 3110400000.,
+ deltaTmom = 1800.,
+ tauCD =     321428.,
+ deltaTtracer= 86400.,
+ deltaTClock = 86400.,
+ deltaTfreesurf= 86400.,
+ abEps = 0.1,
+# project 15: permanent pickup (restart) files every 100 model years
+ pChkptFreq= 3110400000.,
+# project 15: no snapshots; averages come from pkg/diagnostics instead
+ dumpFreq=   0.,
+# project 15: print the monitor block once per model year
+ monitorFreq=31104000.,
+# 2 months restoring timescale for temperature
+ tauThetaClimRelax=  5184000.,
+# 6 months restoring timescale for salinity
+# project 15 mixed BC: salinity restoring OFF (0 sets doSaltClimRelax = false);
+# temperature restoring above is unchanged
+ tauSaltClimRelax = 0.,
+ periodicExternalForcing=.TRUE.,
+ externForcingPeriod=2592000.,
+ externForcingCycle=31104000.,
+ &
+
+# Gridding parameters
+ &PARM04
+ usingSphericalPolarGrid=.TRUE.,
+ delR= 50.,  70., 100., 140., 190.,
+      240., 290., 340., 390., 440.,
+      490., 540., 590., 640., 690.,
+ ygOrigin=-80.,
+ dySpacing=4.,
+ dxSpacing=4.,
+ &
+
+# Input datasets
+ &PARM05
+ bathyFile=      'bathymetry.bin',
+ hydrogThetaFile='lev_t.bin',
+ hydrogSaltFile= 'lev_s.bin',
+ zonalWindFile=  'trenberth_taux.bin',
+ meridWindFile=  'trenberth_tauy.bin',
+ thetaClimFile=  'lev_sst.bin',
+ saltClimFile=   'lev_sss.bin',
+ surfQnetFile=   'ncep_qnet.bin',
+ the_run_name=   'global_oce_latlon',
+# fresh water flux is turned on, comment next line to it turn off
+# (maybe better with surface salinity restoring)
+# project 15 mixed BC: original EmPmR plus the freshwater flux equivalent to the
+# spin-up's salinity restoring (12-month climatology of years 1901-2000)
+ EmPmRFile=      'emp_mixed.bin',
+ &

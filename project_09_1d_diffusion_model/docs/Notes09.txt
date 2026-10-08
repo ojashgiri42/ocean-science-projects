@@ -1,0 +1,6 @@
+This script solves the 1D heat diffusion equation numerically to show how heat diffuses vertically down through the ocean column over time. We use an explicit forward-time, centered-space (FTCS) finite-difference scheme to solve the 1D Heat Diffusion Equation from scratch. 
+Firstly we define the spatial grid (dz=10.0, nz=50) and time parameters (dt=3600, Nt=2000), then we initialize an exponential thermocline profile starting at 25°C at the surface and decaying to 5°C at depth.
+We apply the 1D heat diffusion equation (T_new[k] = T[k] + K * d2T_dz2 * dt) inside a time loop and set a seasonal sine wave at the surface boundary (T_new[0]) while holding the deep boundary fixed at 5°C (T_new[-1]).
+We use plt.plot to compare the initial profile ('k--') against the model result (teal) after 83 days of simulated diffusion.
+Finally we lock the depth axis between 500 meters to 0 meters with (plt.ylim(500, 0)) and invert the Y-axis (invert_yaxis()) to observe how surface heat diffuses downward into the ocean interior.
+This is a numerical-methods exercise: diffusivity is constant and there is no mixed-layer or turbulence parameterization. The explicit scheme is stable when K*dt/dz^2 <= 1/2; here K*dt/dz^2 = 1e-4*3600/10^2 = 0.0036.

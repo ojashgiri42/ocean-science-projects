@@ -1,0 +1,6 @@
+This script shows the ocean current speed and flow direction of the Florida Straits where the data was extracted from a HYCOM server. HYCOM (GLBy0.08/expt_93.0) is a global ocean model analysis/forecast product, and adding (decode_times=False) makes it skip converting complex model timestamp formats so the connection loads much faster.
+Firstly we get the data from the server, then we isolate the surface model level (depth=0) with u (East-West) and v (North-South) velocities and slice the lat and lon of our proposed region.
+We apply the Pythagorean theorem (np.sqrt(u**2 + v**2)) to calculate the total water speed and thin the grid vectors with ([::4, ::4]) so the data isn't overcrowded.
+We use (pcolormesh) to get a high-resolution grid of ocean current speeds and use (YlGnBu_r) to make color shades where calm water is yellow-green and fast-moving currents are dark blue.
+Finally we lock the color scale between 0 m/s to 2.0 m/s with (vmin=0 and vmax=2.0) and overlay direction arrows with (quiver) to show where the ocean currents are flowing.
+Tracking fast-moving currents like the Florida Current (the starting leg of the Gulf Stream) is essential for predicting weather patterns, routing shipping vessels, directing marine search-and-rescue missions, and tracking floating pollution.

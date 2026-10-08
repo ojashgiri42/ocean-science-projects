@@ -1,0 +1,19 @@
+# ===================================
+# | Parameters for SHELFICE package |
+# ===================================
+ &SHELFICE_PARM01
+ SHELFICEboundaryLayer = .TRUE.,
+# project 16 step 3: ice removed north of 71S (open-ocean restoring zone, ice front at 71S)
+ SHELFICEtopoFile='icetopo_open_north.bin',
+# project 16 step 3: ice load set to 0 where the ice was removed
+ SHELFICEloadAnomalyFile = 'phi0surf_open_north.bin',
+# project 16: three-equation melt model (Holland and Jenkins 1999) instead of the
+# simple ISOMIP formula; transfer coefficients stay at their constant defaults
+ useISOMIPTD = .FALSE.,
+ SHELFICEuseGammaFrict = .FALSE.,
+# project 16 step 4 (open_g05): heat transfer coefficient halved (default 1.0E-4 m/s);
+# the salt coefficient follows at the fixed ratio SHELFICEsaltToHeatRatio = 5.05E-3
+ SHELFICEheatTransCoeff = 0.5E-4,
+ no_slip_shelfice = .false.,
+ SHELFICEwriteState = .TRUE.,
+ &

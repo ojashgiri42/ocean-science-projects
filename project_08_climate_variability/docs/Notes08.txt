@@ -1,0 +1,5 @@
+This script shows the sea surface temperature (SST) anomalies and El Niño / La Niña climate cycles in the Equatorial Pacific (Niño 3.4 region) where the data was extracted from a NOAA climate server. NOAA OISST v2 (Optimum Interpolation SST, an observational analysis product) was used as it provides a long, monthly 1-degree SST record.
+Firstly we get the data from the server, then we sort latitude coordinates (sortby(lat)) and slice the lat (-5 to 5) and lon (190 to 240) of our proposed region.
+We apply cosine latitude-weighting (weighted(weights)) to calculate spatial averages and compute monthly anomalies (groupby('time.month')) by subtracting long-term monthly baselines to remove the seasonal cycle.
+We use plt.plot to display the multi-decadal time-series (teal) and fill_between to shade months with anomaly >= +0.5 °C in red (crimson) and <= -0.5 °C in blue (dodgerblue).
+Finally we lock the reference baseline with axhline(0) and set phase threshold limits (>= 0.5 and <= -0.5) to easily identify historical climate anomaly events across decades

@@ -1,0 +1,21 @@
+# ===================================
+# | Parameters for SHELFICE package |
+# ===================================
+ &SHELFICE_PARM01
+ SHELFICEboundaryLayer = .TRUE.,
+# project 16 step 3: ice removed north of 71S (open-ocean restoring zone, ice front at 71S)
+ SHELFICEtopoFile='icetopo_open_north.bin',
+# project 16 step 3: ice load set to 0 where the ice was removed
+ SHELFICEloadAnomalyFile = 'phi0surf_open_north.bin',
+# project 16: three-equation melt model (Holland and Jenkins 1999) instead of the
+# simple ISOMIP formula; transfer coefficients stay at their constant defaults
+ useISOMIPTD = .FALSE.,
+# project 16 step 4 (open_frict): transfer coefficients depend on the friction velocity
+# next to the ice (Holland and Jenkins 1999) instead of being constant
+ SHELFICEuseGammaFrict = .TRUE.,
+# with SHELFICEuseGammaFrict the ice-base drag would default to shiCdrag (1.5E-3);
+# keep it at the baseline value (bottomDragQuadratic = 2.5E-3) so only the melt formula changes
+ SHELFICEDragQuadratic = 2.5E-3,
+ no_slip_shelfice = .false.,
+ SHELFICEwriteState = .TRUE.,
+ &

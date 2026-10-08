@@ -1,0 +1,631 @@
+ICE SHEET FLOWLINE MODEL TUTORIAL
+by Ojash Giri
+Project 17: A marine ice sheet model I wrote myself, in Python
+
+A step-by-step account of everything I did, from setting up the project
+to the final checks, written so that I (or anyone) could repeat it alone.
+Every number in this note comes from my own notebooks. Where something
+went wrong, I say so, and how I found out.
+
+========================================================================
+CONTENTS
+========================================================================
+ 0. The idea in plain words
+ 1. What you need before you start
+ 2. What I read and checked before writing any code
+ 3. Setting up the project (and protecting my older work)
+ 4. Units: the boring part that breaks everything if it is wrong
+ 5. Step 1: steady states on paper, with Schoof's formula
+ 6. Step 2: how fast does the ice move? (the velocity solver)
+ 7. Step 3: letting the ice sheet evolve in time, and the grid problem
+ 8. Step 4: the hysteresis loop in the real model
+ 9. Step 5: checking the bookkeeping, and what an ice shelf can't do
+10. The big picture
+11. If I did it again: a checklist
+12. Mistakes I made and how I caught them
+13. Words to know (glossary)
+
+
+========================================================================
+0. THE IDEA IN PLAIN WORDS
+========================================================================
+
+West Antarctica's ice sheet sits on a bed that is mostly BELOW sea level
+(a "marine" ice sheet). Ice flows from the middle (the "ice divide")
+toward the ocean. Where it gets thin enough to float, it lifts off the
+bed: that line is the "grounding line". Beyond it, the floating ice is an
+"ice shelf".
+
+In many places the bed gets DEEPER going inland (a "reverse slope" or
+"overdeepening"). In 1974 Weertman argued that a grounding line there
+cannot sit still: if it retreats a little, the ice at the new grounding
+line is thicker (the water is deeper), thicker ice flows out faster, so
+the ice sheet shrinks more, so the grounding line retreats more... a
+runaway. This is the "marine ice sheet instability". It is a tipping
+point: once it starts, it keeps going on its own, and putting the
+conditions back does not undo it straight away (hysteresis).
+
+Schoof (2007) turned this into a formula: the ice flow across the
+grounding line grows with the ice thickness there, to the power 4.75.
+
+What I did in this project:
+  1. Used Schoof's formula to find, on paper, where the grounding line
+     can be steady, and which positions are unstable.
+  2. Wrote my own 1D computer model of an ice sheet (one line from the
+     divide to the ocean, a "flowline").
+  3. Checked whether my model finds the same positions, and how much its
+     answer depends on the grid size (a known weak spot of such models).
+  4. Reproduced the hysteresis loop with the real model.
+  5. Checked that the model conserves ice, and showed that in 1D an ice
+     shelf cannot hold the grounding line back.
+
+Spoiler: the instability and the hysteresis are really there, but a
+simple grid can put the grounding line 30-100 km in the wrong place, and
+where it ends up even depends on the history of the run.
+
+
+========================================================================
+1. WHAT YOU NEED BEFORE YOU START
+========================================================================
+
+My computer: Apple MacBook with an M1 chip and 16 GB of memory. One core
+is plenty; the longest notebook takes about 8 minutes.
+
+Software (all already installed; nothing new was installed for this
+project):
+  - Python (Miniforge) with numpy, scipy and matplotlib.
+      numpy       arrays and maths
+      scipy       two tools: solve_banded (solves the velocity equations
+                  fast) and brentq (finds where a function crosses zero)
+      matplotlib  plots
+  - Jupyter, to run notebooks, with the kernel called "ocean".
+
+How to check:
+    ~/miniforge3/bin/python -c "import numpy, scipy, matplotlib; print(numpy.__version__, scipy.__version__, matplotlib.__version__)"
+  It printed 2.5.2 1.18.0 3.10.9.
+
+No model to download: unlike projects 15 and 16 (MITgcm), I wrote the
+whole model myself, in one file of plain functions (flowline.py).
+
+
+========================================================================
+2. WHAT I READ AND CHECKED BEFORE WRITING ANY CODE
+========================================================================
+
+The setup is "MISMIP experiment 3" (Pattyn et al. 2012, The Cryosphere
+6, 573-588), an international test that many ice sheet models ran.
+
+  2.1 I downloaded the MISMIP paper (it is free):
+        curl -sL -o pattyn2012.pdf https://tc.copernicus.org/articles/6/573/2012/tc-6-573-2012.pdf
+      The usual PDF-to-text tool (poppler) is not installed, so I pulled
+      the text out with a small Python script using only zlib (built
+      into Python), and searched it for every number.
+
+  2.2 Checked every parameter against MISMIP Table 4 and Schoof (2007)
+      Table 1. All matched:
+        ice density            900 kg/m^3
+        seawater density       1000 kg/m^3
+        gravity g              9.8 m/s^2
+        Glen's exponent n      3     (how ice softens when pushed harder)
+        sliding exponent m     1/3   (how friction grows with speed)
+        sliding coefficient C  7.624e6 Pa m^(-1/3) s^(1/3)
+        snowfall a             0.3 m of ice per year
+        the bed  b(x) = 729 - 2184.8 (x/750 km)^2 + 1031.72 (x/750 km)^4
+                        - 151.72 (x/750 km)^6   metres
+      MISMIP Table 5 gives 13 values of A (ice softness), from 3e-25 down
+      to 2.5e-26 Pa^-3 s^-1 and back up.
+
+  2.3 Two things NEITHER paper states, so I chose them and wrote that
+      down: the length of a year (31 556 926 s = 365.2422 days) and the
+      position of the calving front for experiment 3 (I chose 1600 km,
+      see section 5).
+
+  2.4 Checked all references against their official DOI records
+      (journal, volume, pages), with a small script calling the free
+      Crossref website.
+
+  2.5 Extra reading, for understanding: Schoof (2007b, J. Fluid Mech.)
+      where the 4.75 formula is derived; Cuffey and Paterson (The Physics
+      of Glaciers) and Greve and Blatter (Dynamics of Ice Sheets and
+      Glaciers) for the ice shelf equations; Garbe et al. (2020, Nature)
+      for why this matters (West Antarctica committed to partial collapse
+      at about 2 C of warming, and not regrowing until it is at least
+      1 C colder than pre-industrial). A literature search for 2024-2026
+      found papers on exactly my two themes: how grounding lines depend
+      on grid resolution, and how ocean melt near the grounding line
+      should be applied in models.
+
+
+========================================================================
+3. SETTING UP THE PROJECT (AND PROTECTING MY OLDER WORK)
+========================================================================
+
+My projects 14, 15 and 16 were finished but not yet saved in git. Before
+starting, I protected them:
+
+  git status                                     (look first)
+  git switch -c p14-p16-backup                   (a new local branch)
+  git add -- project_14_tipping_box_models project_15_mitgcm_freshwater_hosing project_16_mitgcm_ice_shelf_cavity .gitignore
+  git commit -m "Back up P14, P15 and P16 work (local only)"
+
+  Commit ea9dd93. Nothing was pushed to GitHub. I only added the three
+  project folders and .gitignore by name, never "git add ." (which would
+  add everything, including other people's edits).
+
+Then a branch for this project, from the same point (so git does not
+touch any other files):
+  git switch -c project-17-marine-ice-sheet-flowline
+
+Folders, like my other projects:
+  project_17_marine_ice_sheet_flowline/
+    notebooks/   the five notebooks AND flowline.py (the model). Keeping
+                 flowline.py next to the notebooks means each notebook can
+                 simply write "from flowline import ...".
+    figures/     every figure, saved at 150 dpi
+    data/        small tables of results (csv)
+    docs/        this note
+    README.md, TUTORIAL.md
+
+After every step: run the notebook top to bottom so the results are saved
+inside it, then commit only this folder:
+  jupyter nbconvert --to notebook --execute --inplace 01_schoof_steady_states.ipynb
+  git add -- project_17_marine_ice_sheet_flowline
+  git commit -m "P17 step 1: ..."
+
+
+========================================================================
+4. UNITS: THE BORING PART THAT BREAKS EVERYTHING IF IT IS WRONG
+========================================================================
+
+Ice moves metres per YEAR, but the papers give A and C per SECOND. I
+chose to work in metres and years everywhere, and convert once:
+
+  A (per year) = A (per second) x 31 556 926
+      e.g. 1e-25 Pa^-3 s^-1  ->  3.1557e-18 Pa^-3 yr^-1
+  C (per year) = C (per second) / 31 556 926^(1/3)
+      7.624e6  ->  2.4126e4 Pa m^(-1/3) yr^(1/3)
+  (The friction is C times speed^(1/3); speed in m/yr is 31 556 926
+  times bigger than in m/s, so C must shrink by that number to the 1/3.)
+
+Two checks that the conversion is right:
+  - Schoof's formula computed in seconds and in years gives the same
+    flux (relative difference 1.1e-16, i.e. identical).
+  - Schoof writes that, with this C, a basal stress of 80 kPa gives
+    sliding of "about 35 m/yr". My conversion gives 36.46 m/yr.
+
+
+========================================================================
+5. STEP 1: STEADY STATES ON PAPER, WITH SCHOOF'S FORMULA
+========================================================================
+(notebooks/01_schoof_steady_states.ipynb)
+
+The question: for a given ice softness A, where can the grounding line
+sit still, and is that position stable?
+
+5.1 The bed. It is above sea level near the divide, crosses sea level at
+    478.7 km, and between 973.7 km (748.9 m below sea level) and 1265.7 km
+    (629.7 m below) it gets SHALLOWER toward the ocean, by 119.2 m. That
+    stretch is the overdeepening.
+
+5.2 Flotation thickness: ice floats when it weighs as much as the water
+    it pushes aside: thickness H_f = (1000/900) x water depth. At the
+    grounding line the ice is exactly this thick.
+
+5.3 Schoof's flux. The ice flow across the grounding line (per metre of
+    width):
+        q = K x h^4.75,  K = [A (rho_i g)^4 (0.1)^3 / (4^3 C)]^(3/4)
+    In plain words: the floating shelf is pulled apart by the difference
+    between ice pressure and water pressure, which grows with h; just
+    upstream, in a short "boundary layer", the ice slows from shelf-like
+    stretching to sliding on the bed. Matching the two gives a flux that
+    rises steeply with h. Softer ice (bigger A) flows faster; more
+    friction (bigger C) holds it back.
+
+5.4 Steady state = all the snow that falls upstream leaves across the
+    grounding line:   a x x_g = q(x_g)
+    Plot both against x_g; every crossing is a steady state. (The same
+    graphical trick as Stommel's box model in my project 14.)
+    Stable or not: if the grounding line moves forward a little, the
+    snowfall grows by a per metre and the outflow by dq/dx_g per metre.
+    If the outflow grows faster (dq/dx_g > a), the ice sheet loses ice
+    and the grounding line moves back: stable. Otherwise: unstable.
+
+    For A = 1e-25 there are three steady states:
+        799.8 km   stable
+       1124.3 km   unstable (on the reverse slope)
+       1376.3 km   stable
+
+5.5 Sweeping A. A trick: the flux is proportional to A^(3/4), so for
+    each position x_g I can solve directly for the one A that makes it
+    steady. That traces every steady state at once: an S-shaped curve.
+    Where it turns around are the "folds":
+        A = 4.9296e-26 at x_g = 948.4 km  -> must jump FORWARD 464.6 km
+                                             to 1413.0 km
+        A = 2.1449e-25 at x_g = 1275.0 km -> must jump BACK 533.7 km
+                                             to 741.3 km
+    Between these two A values there are two stable positions:
+    hysteresis. Four of MISMIP's A values fall inside this range.
+    (The unstable stretch, 948-1275 km, is a bit wider than the
+    overdeepening, 974-1266 km: just outside it the bed deepens seaward,
+    but too gently for the outflow to beat the extra snowfall.)
+
+5.6 The calving front: the farthest steady grounding line in the MISMIP
+    range is 1440.7 km (A = 2.5e-26). I put the fixed calving front at
+    1600 km, 159 km beyond it. In 1D the length of the shelf does not
+    affect the grounding line (section 9), so I only need some room.
+
+Run time: seconds.
+
+
+========================================================================
+6. STEP 2: HOW FAST DOES THE ICE MOVE? (THE VELOCITY SOLVER)
+========================================================================
+(flowline.py: make_grid, effective_viscosity, basal_drag_coefficient,
+ calving_front_stress, solve_ssa; notebooks/02_velocity_solver_and_shelf_test.ipynb)
+
+6.1 The physics. In a fast-sliding ice sheet and in a floating shelf, the
+    ice moves like a plug (same speed at every depth): the "shallow-shelf
+    approximation" (SSA). At every point three forces balance:
+      - stretching: neighbouring ice pulls when the ice is stretched
+        (4 x viscosity x thickness x stretching rate, changing along x)
+      - friction with the bed: C x speed^(1/3), only under grounded ice
+      - the push of gravity down the surface slope ("driving stress")
+    At the divide the speed is 0. At the calving front, the stretching
+    must balance the ice cliff pushing outward minus the sea pushing back.
+    Glen's flow law: ice gets softer the faster it deforms, so the
+    viscosity depends on the answer itself (nonlinear).
+
+6.2 The grid is "staggered": thickness in the middle of each cell,
+    velocity on the cell edges. Why: the flow of ice from one cell to the
+    next happens across an edge; the surface slope between two cell
+    middles is an edge value; the stretching between two edges is a
+    middle value. Each quantity sits exactly where it is used.
+
+6.3 Picard iteration (how to solve a nonlinear equation): guess a
+    velocity, compute the viscosity and friction from it, then the
+    equations become linear. Each edge's equation involves only itself
+    and its two neighbours, so the system is "tridiagonal", which
+    scipy.linalg.solve_banded solves very fast. Repeat with the new
+    velocity until it stops changing.
+      Key settings in solve_ssa:
+        strain_rate_reg=1e-6   floor on the stretching rate (1/yr)
+        speed_reg=1e-3         floor on the speed (m/yr)
+        tol=1e-10              stop when the change is this small
+      Why the floors ("regularization"): at the divide the ice neither
+      moves nor stretches, and the viscosity formula would divide by
+      zero. A tiny floor keeps it finite and changes nothing where the
+      ice really moves.
+
+6.4 The test. A floating shelf of uniform thickness has an exact
+    answer: it stretches at a constant rate
+        du/dx = A (rho_i g (1 - rho_i/rho_w) H / 4)^3
+    For H = 500 m and A = 1e-25: 4.2289e-3 per year, 845.786 m/yr at
+    the front of a 200 km shelf.
+    Result: error 5.592e-8 at EVERY grid spacing (20 km to 0.625 km).
+    The exact answer is a straight line, which my scheme reproduces
+    exactly, so the only error left is the floor from 6.3. Proof: floors
+    of 1e-4, 1e-5, 1e-6, 1e-7 gave errors 5.585e-4, 5.592e-6, 5.592e-8,
+    5.590e-10, exactly (floor / stretching rate)^2.
+
+6.5 A better test. Because the straight line hides any grid error, I
+    added a shelf that thins from 1000 m to 400 m. The same formula then
+    holds at every point with the local thickness (I showed why), so the
+    exact velocity is a curve. The error fell from 1.552e-3 (20 km) to
+    1.506e-6 (0.625 km): divided by 4 each time the grid spacing is
+    halved, a "convergence rate" of 2.001. That is what this kind of
+    scheme should give.
+
+6.6 Speed: 0.003 s per solve with 10 cells, 0.021 s with 320 cells.
+    Picard from zero needs about 77 iterations (each one cuts the change
+    by a factor 0.667); in time stepping it starts from the last
+    velocity and needs far fewer.
+
+(Cuffey and Paterson confirm the test formula is the right one for a 1D
+flowline: a shelf that cannot spread sideways spreads 9/8 times faster
+than one that can, their "about 10% faster".)
+
+
+========================================================================
+7. STEP 3: LETTING THE ICE SHEET EVOLVE, AND THE GRID PROBLEM
+========================================================================
+(flowline.py: grounded_fraction_edges, grounding_line_position,
+ edge_flux, stable_time_step, run_to_steady_state;
+ notebooks/03_time_dependent_model_and_resolution.ipynb)
+
+7.1 Mass conservation: each cell's thickness changes by snowfall plus
+    ice flowing in minus ice flowing out:
+        H_new = H + dt x (a - (flux out - flux in) / dx)
+    The flux uses the thickness of the cell the ice comes FROM
+    ("upwind"); averaging both sides lets wiggles grow.
+
+7.2 The time step: an explicit update is only stable if no ice moves
+    more than one cell per step. I use half a cell:
+        dt = 0.5 x dx / (fastest speed), never more than 10 years
+    The fastest ice (about 2000 m/yr at the front) sets the step, so
+    halving the grid spacing costs about 4 times more (twice the cells,
+    half the step).
+
+7.3 Grounded or floating: a cell is grounded if its ice is thicker than
+    the flotation thickness. Surface = bed + H if grounded,
+    0.1 x H above sea level if floating.
+
+7.4 Starting point, as in MISMIP: a 10 m layer of ice everywhere. It
+    floats where the bed is more than 9 m below sea level, so the first
+    grounding line is at 481.6 km.
+
+7.5 When is a run "finished"? I first used a loose rule and got steady
+    states 30-100 km short of Schoof. Before believing that, I ran the
+    same cases for a fixed 60 000 years: the grounding lines stopped
+    moving after about 20 000 years and the volume changed by 0.000% in
+    the last 10 000. So they really are stuck. Then I tightened the rule:
+        XG_RATE_TOL = 0.1    grounding line moves less than 0.1 m/yr
+        DHDT_TOL    = 1e-4   thickness changes less than 0.1 mm/yr
+        CHECK_EVERY = 500    checked every 500 years
+
+7.6 The resolution test: A = 3e-25 (Schoof: 721.90 km, on a normal bed),
+    from the 10 m layer to steady state, at 8, 4, 2, 1 and 0.5 km.
+    Each took 18 500 to 22 500 model years.
+
+    plain fixed grid:
+        8 km  615.44 km (106.45 km short)     3 s
+        4 km  639.79 km  (82.10 short)        7 s
+        2 km  659.94 km  (61.96 short)       17 s
+        1 km  676.99 km  (44.91 short)       45 s
+      0.5 km  691.50 km  (30.40 short)      137 s
+
+    Why a fixed grid struggles:
+      - friction switches from full to zero at one grid edge, while in
+        reality it changes over a short boundary layer;
+      - the grounding line can only move a whole cell at a time: to
+        advance, the next cell must thicken until it grounds. So the grid
+        can hold the grounding line in the wrong place.
+
+7.7 The sub-grid scheme (after Gladstone et al. 2010, Leguy et al.
+    2014). "Thickness above flotation" is positive on grounded ice and
+    negative on floating ice. Between the last grounded and the first
+    floating cell I draw a straight line and place the grounding line
+    where it crosses zero, then give that one edge only the grounded
+    fraction of its friction. Example: +25 m and -15 m, 8 km apart ->
+    the grounding line is 25/40 = 0.625 of the way across, and the edge
+    gets 0.625 of its friction. One line in the code switches it:
+        run_to_steady_state(..., "subgrid", ...)   instead of "plain"
+
+    sub-grid scheme:
+        8 km  691.84 km (30.06 short)     3.5 s
+        4 km  705.78 km (16.11 short)     8 s
+        2 km  710.98 km (10.92 short)    17 s
+        1 km  715.48 km  (6.42 short)    44 s
+      0.5 km  717.73 km  (4.16 short)   112 s
+    At 8 km it is as good as the plain grid at 0.5 km, but it is still
+    not exactly right even at 0.5 km.
+
+7.8 Advance or retreat? On coarse grids I also ran to steady state with
+    A = 1e-25 first, then switched to 3e-25 so the grounding line had to
+    RETREAT into place:
+      plain grid: it barely retreated (1 to 3 km) and stopped after
+        1500 years, 45-59 km away from where the advance stopped.
+      sub-grid: advance and retreat end on either side of Schoof's
+        721.90 km (at 2 km: 710.98 and 725.70 km); the gap shrinks with
+        resolution (67, 30, 15 km at 8, 4, 2 km).
+    So on a coarse grid the answer depends on the history of the run,
+    not only on the physics. Important for step 4.
+
+
+========================================================================
+8. STEP 4: THE HYSTERESIS LOOP IN THE REAL MODEL
+========================================================================
+(notebooks/04_hysteresis_experiment.ipynb)
+
+Settings at the top of the notebook:
+    A_SEQUENCE_SI = 3e-25 ... 2.5e-26 ... 3e-25   (MISMIP Table 5)
+    DX = 1e3          1 km grid
+    SCHEME = "subgrid"
+    CHECK_EVERY = 100  (years; also how often a profile is saved)
+    MAX_YEARS_PER_STEP = 80000
+
+Each A starts from the final ice sheet of the previous A and runs until
+steady. All 13 steps reached steady state: 221 500 model years in 5.5
+minutes (much faster than my 20-40 minute guess).
+
+What happened:
+  Going down (A smaller = stiffer ice = bigger ice sheet):
+    715.5, 725.5, 739.4, 758.5, 792.5, 908.5 km ... then at A = 2.5e-26
+    a JUMP to 1433.5 km.
+  Going up:
+    1407.1, 1372.1, 1343.0, 1307.9 km ... then at A = 2.5e-25 a JUMP
+    back to 730.9 km, and 720.9 km at the end.
+  So for A = 5e-26, 1e-25, 1.5e-25 and 2e-25 the model has two
+  different steady states depending on where it came from. The jumps
+  happen between the same MISMIP values as Schoof's folds.
+  Errors against Schoof: mostly 3 to 7 km, except 17.6 km at A = 5e-26,
+  right next to the lower fold, where the ice sheet also took 31 600
+  years to settle. Near a fold the steady-state curve is almost
+  vertical, so small errors matter a lot, and the system responds very
+  slowly ("critical slowing down", the same effect behind the early
+  warning signals in project 14).
+
+The jumps take a long time:
+  advance: crossed the overdeepening in 5800 years (about 50 m/yr)
+  retreat: 3800 years just to reach the overdeepening, then 7500 years
+    to cross it, speeding up to 167 m/yr near its landward end: the
+    runaway feeds itself.
+
+
+========================================================================
+9. STEP 5: CHECKING THE BOOKKEEPING, AND WHAT A SHELF CAN'T DO
+========================================================================
+(notebooks/05_checks_and_summary.ipynb)
+
+9.1 Mass check. Added up over all cells, the ice moving between cells
+    cancels out, so the total ice volume can only change by snowfall
+    minus the ice leaving at the calving front. My run (sub-grid, 4 km):
+    volume grew by 1.826951e9 m^2, snowfall minus calving was
+    1.826951e9 m^2. Relative difference 1.9e-14: only rounding. In
+    steady state, snowfall and calving rates differ by 0.033%.
+
+9.2 In 1D the shelf can't hold the grounding line back.
+    In step 2 I showed that the stress in a free shelf at any point
+    depends only on the thickness there. At the grounding line that
+    thickness is fixed by the water depth, so nothing downstream
+    matters.
+      - Halving the shelf thickness: the grounded ice speed changed by
+        at most 7.2e-10 m/yr. (Only the shelf slowed, 2038 to 591 m/yr.)
+      - Melting the shelf from below at 2 and 10 m/yr (new option
+        shelf_melt=... in run_to_steady_state): the shelf thinned from
+        258 m to 29.6 and 8.5 m, and the grounding line moved -0.11 and
+        0.00 km.
+
+9.3 A trap I fell into: my first version melted EVERY floating cell,
+    including the first one after the grounding line. With 10 m/yr the
+    grounding line then retreated 36.81 km in 5000 years, jumping back
+    and forth. That is the grid, not physics: on a 4 km grid that cell's
+    centre can be almost 4 km from the grounding line, so I was melting
+    ice that is nearly still grounded. Not melting that cell (the default
+    now; melt_first_floating_cell=True brings the old behaviour back)
+    removed the retreat completely. Recent papers (Seroussi and
+    Morlighem 2018; Wang et al. 2024) recommend exactly this.
+
+9.4 Why this matters for real Antarctica (and my project 16): real
+    shelves sit in bays and rest on bumps, so they push back on the
+    grounded ice ("buttressing"). Schoof writes this as a factor theta
+    on the stress at the grounding line, which multiplies the flux by
+    theta^(9/4). Thinning a buttressing shelf by ocean melt raises theta,
+    increases the flux, and can push the grounding line onto a reverse
+    slope, where the instability takes over. My 1D model cannot do this
+    at all, which is exactly why the 3D ocean melt of project 16 matters.
+
+
+========================================================================
+10. THE BIG PICTURE
+========================================================================
+
+  1. On a bed that deepens inland, a marine ice sheet has unstable
+     grounding-line positions, folds, jumps of hundreds of kilometres,
+     and hysteresis. Schoof's formula predicts them on paper; my own
+     model reproduces them.
+  2. The steady states come from one simple balance (snowfall in = ice
+     out), found with the same graphical method as my box models in
+     project 14.
+  3. Numerical models can get the grounding line wrong by tens of
+     kilometres, and the error depends on the grid and on the history.
+     A simple sub-grid fix helps a lot but does not remove it. Real
+     model studies of Antarctic tipping (like Garbe et al. 2020) say
+     their thresholds depend on resolution; now I understand why.
+  4. Crossing an overdeepening takes thousands of years, and a retreat
+     speeds itself up.
+  5. In 1D the ocean cannot touch the grounding line through the shelf;
+     in the real world it can, through buttressing.
+
+What the next steps would be: couple this model to a simple ocean box
+model so ocean temperature melts the shelf, add Schoof's buttressing
+factor so melting matters, and compare updating ocean and ice together
+every step (synchronous) with updating the ocean only now and then
+(asynchronous), especially near a tipping point.
+
+
+========================================================================
+11. IF I DID IT AGAIN: A CHECKLIST
+========================================================================
+
+  [ ] Protect existing work first (local backup branch, add files by
+      name, never "git add .", never push without asking).
+  [ ] Check every parameter against the paper's tables; write down
+      anything the paper does not say, and what I chose.
+  [ ] Fix the units once (metres and years) and test the conversion.
+  [ ] Solve the problem on paper first (Schoof's formula) so I know what
+      the model should give.
+  [ ] Test the velocity solver against an exact solution that it CANNOT
+      reproduce by accident (a curved one), and check the convergence
+      rate.
+  [ ] Time a short prototype before promising run times.
+  [ ] Before trusting "steady", run much longer and see if it moves.
+  [ ] Test more than one grid spacing; plot error against grid spacing.
+  [ ] Test advance AND retreat into the same state.
+  [ ] Check the mass balance closes to rounding error.
+  [ ] Look at every figure before reporting (I caught a clipped plot
+      this way).
+  [ ] Be careful where forcing (like melt) is applied next to the
+      grounding line.
+
+
+========================================================================
+12. MISTAKES I MADE AND HOW I CAUGHT THEM
+========================================================================
+
+  1. A test that could not fail. My uniform-shelf test had the same
+     error at every grid spacing. Instead of celebrating, I asked why:
+     the exact answer was a straight line, which the scheme reproduces
+     exactly. I added a curved test (thinning shelf) to see the real
+     convergence.
+  2. A loose "steady state" rule. First steady states were 30-100 km
+     short of Schoof. I ran 60 000 years to make sure they were truly
+     stuck (they were), then tightened the rule anyway.
+  3. A slow Python loop. Filling the matrix cell by cell in Python would
+     have made the long runs slow; I rewrote it with array slices and
+     re-ran step 2 to confirm the results did not change at all.
+  4. Copied code. The steady-state search existed in notebook 01 and was
+     needed again in 03 and 04; I moved it into flowline.py and re-ran
+     notebook 01 to confirm identical output.
+  5. A wrong "jump" test in step 4. I first called anything that moved
+     more than 100 km a jump, which also caught the first growth and a
+     normal advance (and gave a meaningless "crossed in 0 years"). Fixed:
+     a jump must start on one side of the overdeepening and end on the
+     other.
+  6. A clipped figure: the ice surface went above the top of the plot.
+     Fixed by setting the limit from the data.
+  7. Melting the cell next to the grounding line (section 9.3): a fake
+     36.81 km retreat. Caught because it contradicted the 1D theory I
+     had just shown.
+  8. A claim my check did not support: I wrote "the update never made a
+     cell negative" when I had only looked at the final state. Changed
+     the wording to what I actually checked.
+  9. Project numbers: the plan first named project 1 for Stommel's model
+     and project 4 for the ice shelf cavity; checked against the folder
+     names, they are 14 and 16, fixed before writing anything.
+
+
+========================================================================
+13. WORDS TO KNOW (GLOSSARY)
+========================================================================
+
+  ice sheet          a large mass of ice on land
+  marine ice sheet   an ice sheet whose bed is below sea level
+  ice divide         the line from which ice flows away on both sides
+  grounding line     where the ice lifts off the bed and starts to float
+  ice shelf          the floating part of the ice
+  calving front      the end of the ice shelf, where icebergs break off
+  overdeepening /    a stretch where the bed gets deeper going inland
+  reverse slope
+  flotation          the thickness at which ice just floats:
+  thickness          (water density / ice density) x water depth
+  rate factor A      how soft the ice is (warmer ice = bigger A)
+  Glen's flow law    ice deforms faster under more stress, to the
+                     power n = 3
+  sliding law        friction with the bed = C x speed^m, m = 1/3
+  SSA                shallow-shelf approximation: ice moves like a plug
+  driving stress     the push of gravity down the surface slope
+  viscosity          how strongly ice resists stretching
+  Picard iteration   solve a nonlinear problem by repeatedly fixing the
+                     coefficients from the last answer
+  tridiagonal        each equation involves only a point and its two
+                     neighbours (fast to solve)
+  regularization     a tiny floor that stops a division by zero
+  staggered grid     different quantities at cell centres and edges
+  upwind             take the value from the side the flow comes from
+  CFL / time step    no ice may move more than (half) a cell per step
+  steady state       nothing changes any more
+  stable / unstable  a small push dies away / grows
+  fold               where a branch of steady states ends and the system
+                     must jump
+  hysteresis         the state depends on the history, not only on the
+                     current conditions
+  critical slowing   near a fold the system returns to steady state
+  down               very slowly
+  convergence rate   how fast the error falls as the grid gets finer
+                     (2 means: half the spacing, a quarter of the error)
+  sub-grid scheme    placing the grounding line between grid points and
+                     scaling the friction in that one cell
+  buttressing        an ice shelf held by bays or bumps pushing back on
+                     the grounded ice (impossible in 1D)
+  MISMIP             Marine Ice Sheet Model Intercomparison Project: a
+                     standard test that many models ran

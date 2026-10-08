@@ -1,0 +1,705 @@
+MITgcm MODEL TUTORIAL
+by Ojash Giri
+Project 15: Freshwater hosing in a global ocean model
+
+A step-by-step account of everything I did, from installing the model to the
+final checks, written so that I (or anyone) could repeat it alone.
+Every number in this note comes from my own runs.
+
+========================================================================
+CONTENTS
+========================================================================
+ 0. The idea in plain words
+ 1. What you need before you start
+ 2. Installing MITgcm and the one Python package
+ 3. Building the model (and the one error I hit)
+ 4. Checking the build against the official answer
+ 5. Understanding the model's settings ("data" file)
+ 6. The spin-up: letting the ocean settle for 2000 years
+ 7. Measuring the AMOC
+ 8. Making the "hosing" freshwater files
+ 9. Hosing with salinity restoring
+10. Switching to mixed boundary conditions
+11. Hosing with mixed boundary conditions
+12. When a run blew up: finding out why
+13. Checking every run, and testing a fix
+14. The final checks (salt budget) and the big picture
+15. If I did it again: a checklist
+16. Mistakes I made and how I caught them
+17. Words to know (glossary)
+
+
+========================================================================
+0. THE IDEA IN PLAIN WORDS
+========================================================================
+
+The Atlantic Meridional Overturning Circulation (AMOC) is a huge loop of
+water in the Atlantic. Warm, salty water flows north near the surface. In
+the far North Atlantic (Labrador Sea, Nordic Seas) it cools, becomes dense
+and sinks. It then flows back south deep down. This loop carries a lot of
+heat north.
+
+The loop depends on the surface water up north being dense enough to sink.
+Salt makes water dense. If the surface gets fresher (from melting ice,
+rain, rivers), it gets lighter and may stop sinking. A weaker loop carries
+less salt north, which makes the surface even fresher, which weakens the
+loop more. This is the "salt-advection feedback". Because of it, the AMOC
+may have two stable states, "on" and "off", like a light switch. That is
+the same idea as Stommel's box model in my project 14.
+
+The experiment: pour extra fresh water ("hosing") into the North Atlantic
+of a real 3D ocean model and see:
+  - how much the AMOC weakens,
+  - whether it comes back when the hosing stops,
+  - and whether the answer depends on how the model treats surface
+    salinity (the "boundary condition").
+
+Spoiler: it depends completely on the boundary condition.
+
+
+========================================================================
+1. WHAT YOU NEED BEFORE YOU START
+========================================================================
+
+My computer:
+  - Apple MacBook with an M1 chip, 16 GB of memory.
+  - The model runs on one core per run, so no cluster is needed.
+
+Software that was already installed (through Homebrew):
+  - gfortran (GNU Fortran 16.2.0)   - the compiler. MITgcm is written
+                                      in Fortran, so we need it to turn
+                                      the code into a program.
+  - make (GNU Make 3.81)            - runs the build steps in order.
+  - netCDF and netCDF-Fortran       - libraries for a common data file
+                                      format. The tutorial setup asks for
+                                      them, even though I did not use
+                                      netCDF output in the end.
+  - MPI (mpif90)                    - for running one model on many cores.
+                                      (Not used here).
+
+How to check (in a terminal):
+    which gfortran make nc-config nf-config
+    gfortran --version
+
+If something is missing, install it yourself, for example:
+    brew install gcc         (gives gfortran)
+    brew install netcdf netcdf-fortran
+
+Python (Miniforge, a conda distribution) with: numpy, xarray, matplotlib,
+cartopy (maps), netCDF4, scipy, and JupyterLab for the notebooks. These
+were already in my portfolio's environment.yml.
+
+========================================================================
+2. INSTALLING MITgcm AND THE ONE PYTHON PACKAGE
+========================================================================
+
+MITgcm is not "installed" like an app. You download its source code and
+build (compile) a program for each experiment.
+
+Step 2.1 - Find the latest release:
+    git ls-remote --tags --refs https://github.com/MITgcm/MITgcm.git
+  The newest was "checkpoint69q".
+
+Step 2.2 - Download only that release, without the full history (saves
+space):
+    mkdir -p ~/models
+    cd ~/models
+    git clone --depth 1 --branch checkpoint69q https://github.com/MITgcm/MITgcm.git
+  Size: 533 MB. Commit 853761d8. Write the release name and commit down,
+  so you can always get the exact same code again.
+
+Step 2.3 - The Python reader for MITgcm's output.
+  MITgcm writes its results as raw binary files (.data) with small text
+  description files (.meta). MITgcm comes with its own Python reader,
+  MITgcmutils, inside the code you just downloaded. I installed it from
+  there, so nothing new was downloaded:
+    ~/miniforge3/bin/python -m pip install --no-deps ~/models/MITgcm/utils/python/MITgcmutils
+  "--no-deps" stops pip from pulling in anything else (it only needs numpy,
+  which I already had). Version installed: MITgcmutils 0.2.1.
+  In Python you then read a file with:
+    from MITgcmutils import rdmds
+    v = rdmds("vvel_annual", 720000)     # file name prefix, step number
+
+Step 2.4 - The only other download: the first time I drew a map, cartopy
+  downloaded coastline data (Natural Earth) automatically. After that it
+  is stored on the computer.
+
+That is everything that was installed for this project.
+
+
+========================================================================
+3. BUILDING THE MODEL (AND THE ONE ERROR I HIT)
+========================================================================
+
+The experiment I used: tutorial_global_oce_latlon, found in
+  ~/models/MITgcm/verification/tutorial_global_oce_latlon/
+It has:
+  code/      compile-time files: grid size (SIZE.h), which packages
+             to include (packages.conf), and a few changed code files
+  input/     run-time files: the "data" settings file and forcing files
+             (winds, heat flux, freshwater flux, observed temperature and
+             salinity)
+  results/   output.txt from the official reference run
+
+What the model is: a global ocean on a 4 x 4 degree grid (90 x 40 points),
+from 80 S to 80 N, with 15 depth levels (50 m thick at the top, 690 m at
+the bottom, 5200 m deepest).
+
+Building takes three commands, which I put in a script (scripts/build.sh):
+  1. genmake2   - looks at your computer and the experiment, writes a
+                  "Makefile" (the build recipe)
+  2. make depend - works out which code files depend on which
+  3. make       - compiles everything into one program called "mitgcmuv"
+
+genmake2 needs a "build-options" file for your type of computer. To find
+the right one:
+    uname -m
+  It printed "arm64" (Apple silicon), so the file is
+    tools/build_options/darwin_arm64_gfortran
+  ("darwin" = macOS, "gfortran" = the compiler). darwin_amd64_gfortran
+  would be for an older Intel Mac.
+
+The core of build.sh:
+    cd <empty build folder>
+    $MITGCM/tools/genmake2 -rootdir=$MITGCM -mods=<code folder> \
+        -optfile=$MITGCM/tools/build_options/darwin_arm64_gfortran
+    make depend
+    make
+
+THE ERROR: the first build failed at the very last step with
+    ld: library 'netcdf' not found
+Meaning: the "linker" (the part that glues everything into one program)
+could not find the netCDF library file. Why: the tutorial includes the
+netCDF output package (pkg/mnc). Homebrew's netCDF-Fortran tool told the
+linker where the Fortran part lives, but not where the C part lives
+(/opt/homebrew/lib). The fix was one line in build.sh, before building:
+    export LIBRARY_PATH=/opt/homebrew/lib:$LIBRARY_PATH
+gfortran also searches folders listed in LIBRARY_PATH. No MITgcm file was
+changed, and nothing had to be installed.
+
+I built the program twice:
+  - an "IEEE" build (option -ieee, no optimization): the arithmetic is as
+    close as possible to the reference computer. Best for checking.
+  - a "fast" build (optimized, -O3): faster, for the long runs.
+Each build took about 2 minutes.
+
+
+========================================================================
+4. CHECKING THE BUILD AGAINST THE OFFICIAL ANSWER
+========================================================================
+
+Why: before changing anything, I must know my build gives the right
+answer. Otherwise I could never tell a real effect of my experiment from a
+problem with my compiler.
+
+How: I ran the tutorial's short test exactly as provided (20 time steps)
+with a second script, scripts/run_experiment.sh, which:
+  - makes a run folder outside the repo,
+  - links in the original input files,
+  - copies in my changed files (if any) so they win over the originals,
+  - copies in the program and runs it, saving all messages to output.txt.
+
+The model prints blocks of lines starting with "%MON" (monitor): average,
+maximum, minimum of temperature, salinity, velocity and so on. The
+reference output.txt has the same lines from MITgcm's own run. I compared
+all 165 monitored numbers at all 21 print times, counting how many
+significant digits agree.
+
+Result:
+  - IEEE build: 125 of 165 identical in every digit, the rest agree to at
+    least 11.3 digits.
+  - Fast build: 117 of 165 identical, the rest agree to at least 10.0
+    digits.
+  - One number seemed not to match at all: the global mean vertical
+    velocity. But its values are about 1e-22 m/s - they should be exactly
+    zero and are just rounding noise, so comparing them means nothing.
+
+Agreement to 10-16 digits means my build solves the same equations the
+same way. Tiny differences come from the order of computer arithmetic.
+
+Timing (2-year test run, output reduced):
+  - fast build: 4.54 seconds per model year
+  - IEEE build: 49.45 seconds per model year (10.9 times slower)
+So all long runs used the fast build. That meant about 1.3 hours per
+1000 model years.
+
+
+========================================================================
+5. UNDERSTANDING THE MODEL'S SETTINGS ("data" FILE)
+========================================================================
+
+The file input/data is a list of settings (Fortran "namelists"). The ones
+that matter most here (times are in seconds):
+
+  deltaTmom   = 1800      time step for velocity: 30 minutes
+  deltaTtracer = 86400    time step for temperature and salinity: 1 day
+  deltaTClock = 86400     the model clock moves 1 day per step,
+                          so 1 model year = 360 steps
+  nIter0      = 0         starting step. 0 = start from the initial state
+                          (observed temperature/salinity, ocean at rest).
+                          A number like 720000 = restart from a saved state.
+  nTimeSteps  = 20        how many steps to run
+  pChkptFreq              how often to save a "pickup" (restart) file
+  dumpFreq                how often to save snapshots of the ocean
+  monitorFreq             how often to print the %MON block
+  tauThetaClimRelax = 5184000   (60 days)  surface temperature is pulled
+                          toward observations over this time
+  tauSaltClimRelax = 15552000   (180 days) surface salinity is pulled
+                          toward observations over this time
+  externForcingPeriod = 2592000 (30 days) and externForcingCycle = 31104000
+                          (360 days): forcing files have 12 monthly fields,
+                          repeated every year
+
+IMPORTANT: this model uses a 360-day year (12 months of 30 days). Every
+"per year" number in the project uses 360 days.
+
+Why is the tracer time step 48 times longer than the velocity step?
+The deep ocean takes thousands of years to settle, mostly because heat and
+salt spread slowly. Velocity has fast waves that need a short step. The
+trick ("asynchronous time stepping"): move temperature and salinity 1 day
+per step but velocity only 30 minutes. The ocean reaches its final steady
+state much faster, and the steady state itself is the same.
+The cost: anything that changes in time is distorted. So I trust the
+final states, but NOT "how many years" a change takes.
+
+How the surface forcing works (I checked the code before changing
+anything):
+  - Wind: trenberth_taux.bin and trenberth_tauy.bin, in N/m^2.
+  - Heat: ncep_qnet.bin, in W/m^2. Positive = ocean loses heat.
+  - Freshwater: ncep_emp.bin = evaporation minus precipitation minus
+    runoff ("EmPmR"). The file is in m/s. The model multiplies by 1000
+    kg/m^3 to get kg/m^2/s. Positive = evaporation = ocean gets saltier.
+    So ADDING freshwater means a NEGATIVE number.
+  - Restoring: the top 50 m are pulled toward the observed surface
+    temperature (60 days) and salinity (180 days).
+Each forcing file is 12 months x 40 x 90 single-precision numbers in
+big-endian byte order (172800 bytes).
+
+CFL numbers: the monitor also prints "CFL" numbers = how far water moves
+in one time step compared with the size of a grid cell. If one gets close
+to 1, water jumps more than a cell per step and the model can become
+unstable. In my test they were below 0.1; after the full spin-up the
+largest was 0.0396. (This turned out to matter later - see section 12.)
+
+
+========================================================================
+6. THE SPIN-UP: LETTING THE OCEAN SETTLE FOR 2000 YEARS
+========================================================================
+
+Why: the model starts from observed temperature and salinity with no
+motion. It needs a long time to reach its own balance. Every experiment
+starts from that balanced ("spun-up") state.
+
+What I changed (and only this):
+  1. Compiled in pkg/diagnostics, the standard way to save time averages.
+     Two small compile-time files in experiments/spinup/code/:
+       - packages.conf: the tutorial's list plus the word "diagnostics"
+       - DIAGNOSTICS_SIZE.h: raised numDiags from 15 to 150 (room for all
+         the output I asked for)
+     build.sh copies the tutorial's code folder and puts my changed files
+     on top, so it is clear which file wins.
+  2. experiments/spinup/input/data:
+       nTimeSteps = 720000      (2000 years x 360 steps)
+       globalFiles = .TRUE.     (one output file instead of one per tile)
+       pChkptFreq = 3110400000. (restart file every 100 years)
+       dumpFreq = 0.            (no snapshots)
+       monitorFreq = 31104000.  (print monitor once a year)
+  3. data.pkg: useDiagnostics = .TRUE.
+  4. data.diagnostics - what to save:
+       - every year: annual-mean meridional (north-south) velocity VVEL in
+         3D (needed for the AMOC); surface temperature and salinity;
+         surface fluxes SRELAX (salt added/removed by restoring), TRELAX,
+         SFLUX, oceFWflx
+       - every 10 years: 10-year means of 3D temperature, salinity, VVEL
+       - every 100 years: a 12-month average cycle of SRELAX (needed in
+         section 10)
+       - every year: a small text file of global-mean temperature and
+         salinity at each level (to watch the drift)
+
+Before the long run I did a 2-year test with the same output lists to make
+sure every file came out right. It also showed that GM_PsiY (the
+eddy-driven part of the overturning from the GM mixing scheme) is always
+zero in this setup (it is only filled in the "advective form" of GM, and
+the tutorial uses the "skew-flux" form). I removed it rather than change
+the model. So my AMOC is the resolved flow only.
+
+The run: 2000 model years, 2 h 36 min, about 1.0 GB.
+
+What I found:
+  - The AMOC settled at 19.80 Sv (mean of the last 100 years), at 52 N and
+    1080 m depth. Over the last 500 years it still crept up by only
+    +0.042 Sv per century - small enough to call settled.
+  - It started at 17-18 Sv, dropped to 12.66 Sv in year 9 while the model
+    adjusted, then rose and levelled off.
+  - Global mean temperature: 3.6171 C to 4.4727 C, still warming very
+    slowly at the end (+0.0072 C per century).
+  - Global mean salinity: rose to 34.73907 g/kg at year 488, then fell in
+    a straight line to 34.72521 g/kg (-0.00118 g/kg per century).
+  - Year-to-year changes in the AMOC were tiny (0.008 Sv) because the
+    forcing repeats exactly every year. Bad for realism, good for the
+    experiment: any change I see later is caused by the hosing.
+
+Why was salinity falling? A salt budget for the last year showed that
+only the restoring (-550 tonnes of salt per second) explained it. The big
+salt flux from evaporation/precipitation (+4527 t/s when calculated) did
+not change the total salt. This was a first hint about how the model
+treats fresh water (confirmed in sections 9, 10 and 14).
+
+
+========================================================================
+7. MEASURING THE AMOC
+========================================================================
+
+Step 7.1 - An Atlantic mask (which grid cells are "Atlantic").
+  First try: every ocean cell from 34 S northward, between 100 W and 20 E.
+  Plotting it showed it also caught Pacific cells west of South and
+  Central America. I removed them with two rules (west of 290 E from 34 S
+  to 10 N; 260-270 E at 14 N): 537 cells minus 77 = 460 Atlantic cells.
+  Always plot a mask on a map - mistakes are obvious there and invisible
+  in numbers.
+
+Step 7.2 - The overturning streamfunction.
+  At each depth level and latitude, add up (north-south velocity x width
+  of the cell face x layer thickness) across the Atlantic. That is the
+  water flowing north in that layer. Then add the layers from the surface
+  down. The streamfunction at depth z = all the water flowing north above
+  z, in Sverdrups (1 Sv = 1 million cubic metres per second). It is
+  positive for the AMOC loop.
+
+Step 7.3 - The AMOC index: the largest value of the streamfunction between
+  20 N and 60 N and below 500 m. One number per year.
+
+These functions are in src/amoc_tools.py so every notebook uses the same
+code.
+
+
+========================================================================
+8. MAKING THE "HOSING" FRESHWATER FILES
+========================================================================
+
+Goal: add exactly 0.1, 0.3 or 0.5 Sv of extra fresh water, spread evenly
+over the subpolar North Atlantic.
+
+Region: Atlantic ocean cells between 50 N and 70 N and between 60 W and
+20 E: 87 cells, 8.50 million km^2. This covers the Labrador Sea, Irminger
+Sea, Iceland Basin and Nordic Seas - exactly where the deep water forms.
+That is why we hose there: the AMOC needs dense water to sink there, and
+that is also where real meltwater from Greenland and the Arctic arrives.
+
+The arithmetic: flux per area = volume flux / area.
+  0.1 Sv: -1.1762e-08 m/s = 0.366 m of extra water per (360-day) year
+  0.3 Sv: -3.5285e-08 m/s = 1.097 m per year
+  0.5 Sv: -5.8808e-08 m/s = 1.829 m per year
+  (negative because positive EmPmR means evaporation)
+
+Each new file = original ncep_emp.bin + this anomaly, written in exactly
+the same format (12 months, single precision, big-endian).
+
+Check: read each file back from disk, subtract the original, multiply by
+the model's cell areas and add up. Every month: 0.10000000, 0.30000000,
+0.50000000 Sv. Zero change outside the region. A 1-year test run then
+confirmed the model received 0.5000 Sv of extra fresh water, all in the
+region. Always check that the model really gets what you think you gave
+it - units, sign and file format are easy to get wrong.
+
+
+========================================================================
+9. HOSING WITH SALINITY RESTORING
+========================================================================
+
+Runs (all start from the spin-up's last saved state, year 2000):
+  - control: 500 more years with normal forcing
+  - 0.1, 0.3 and 0.5 Sv: 200 years with hosing (2001-2200), then
+    300 years without (2201-2500), restarted from a saved state at
+    exactly year 2200 (step 792000)
+Each run's settings file differs from the spin-up only in nIter0 (start),
+nTimeSteps (length) and EmPmRFile (which freshwater file).
+Script: scripts/run_hosing_set.sh runs the control and the three hosing
+runs at the same time, one per fast core. Four at once ran at about 10 s
+per model year each (they share memory bandwidth), 1.5 hours in total.
+
+Results (AMOC, end of hosing vs control 19.87 Sv; recovery vs 19.94 Sv):
+  0.1 Sv: 17.60 Sv (-11.4%), recovered to 19.99 Sv
+  0.3 Sv: 14.27 Sv (-28.2%), recovered to 20.06 Sv
+  0.5 Sv: 11.70 Sv (-41.1%), recovered to 20.15 Sv
+All recovered, and even overshot for a while (peaks 20.21, 20.64 and
+21.01 Sv).
+
+Why so mild? Restoring pulls the surface salinity back toward
+observations. I converted the extra restoring salt flux into the amount of
+fresh water it cancels: within a few years it cancelled 80-87% of the
+hosing in the hosing region. It can never cancel 100%, because restoring
+only pushes back if the surface stays fresher than observed - and that
+leftover freshening is what weakens the AMOC. But a fresher surface means
+a stronger push back, so the AMOC can't collapse. One stable state only.
+
+A correction I made: I first guessed the hosing doesn't change the total
+salt. The runs showed global salinity dropped (by 0.016 g/kg for 0.5 Sv at
+year 2200), matching simple dilution by the fresh water that the restoring
+did not cancel. The rule that fits everything: total salt only changes
+with the NET fresh water the ocean gains, plus whatever restoring adds.
+
+
+========================================================================
+10. SWITCHING TO MIXED BOUNDARY CONDITIONS
+========================================================================
+
+The key idea. In reality the atmosphere pushes back on surface
+temperature (a warm patch loses heat to the air within months), so
+temperature restoring imitates something real. Nothing pushes back on
+surface salinity. Salinity restoring is an artificial shortcut - and it
+erases exactly the salt feedback we want to study.
+
+"Mixed boundary conditions" = keep temperature restoring, replace
+salinity restoring with a FIXED freshwater flux that, on average, does
+what the restoring did at the end of the spin-up. So the model starts in
+the same state, but salinity anomalies are no longer pulled back.
+
+How:
+  1. Take the spin-up's 12-month average cycle of SRELAX (years 1901-2000).
+     It has a big seasonal cycle: from +14481 to -34170 tonnes of salt
+     per second by month, with an annual mean of only -519.6 t/s.
+     So I kept all 12 months.
+  2. Convert salt flux to fresh water: divide by (1000 kg/m^3 x local
+     surface salinity). Same sign: adding salt = more evaporation.
+  3. emp_mixed.bin = original EmPmR + this flux.
+  4. Turn salinity restoring off: tauSaltClimRelax = 0. (I checked in the
+     code that 0 really switches it off, and the run's printout confirmed
+     doSaltClimRelax = F, doThetaClimRelax = T.)
+
+Mixed control (500 years, no hosing). Result: even without hosing, the
+switch itself was a shock. The AMOC fell from 19.78 Sv to 16.51 Sv by year
+2038, recovered, dipped again, and settled at 19.74 Sv. It did not
+collapse, but the first ~150 years are an adjustment.
+
+A salt check: the mixed control ended 0.01247 g/kg saltier than the
+restoring control. Predicted from the fluxes: 0.01251 g/kg (within 0.3%).
+
+
+========================================================================
+11. HOSING WITH MIXED BOUNDARY CONDITIONS
+========================================================================
+
+Same design as section 9, but with mixed boundary conditions, and the
+mixed control from section 10 as the control (3 runs at once, 1 h 14 min).
+
+Results:
+  0.1 Sv: AMOC fell below 5 Sv by 2058 and to about 0 (-0.04 Sv) by 2200.
+          300 years after hosing stopped: 0.00 Sv. No recovery.
+  0.3 Sv: below 5 Sv by 2021, about 0 by 2200, still 0 at 2500.
+  0.5 Sv: below 5 Sv by 2017, about 0 by 2050 - then the run failed
+          numerically in 2090 (section 12).
+
+Surface salinity in the hosing region (0.3 Sv, run minus its control):
+  restoring: -0.30 g/kg at the end of hosing, back to normal later
+  mixed:     -5.73 g/kg at the end of hosing, still -2.79 g/kg 300 years
+             after the hosing stopped
+
+What it means: with mixed boundary conditions the model has a second,
+"off" state, and even 0.1 Sv for 200 years pushed it there. The fresh,
+light surface layer left behind keeps the water from sinking, and nothing
+brings the salt back. In Stommel's terms: the polar box is now so fresh
+that salinity cancels the temperature-driven density difference, the flow
+stops, and no salty water arrives to undo it.
+
+Caveat: the hosing started at the same moment as the switch to mixed
+boundary conditions. A cleaner test would start from the settled mixed
+control (around year 2300).
+
+
+========================================================================
+12. WHEN A RUN BLEW UP: FINDING OUT WHY
+========================================================================
+
+The 0.5 Sv mixed run printed "Execution ended Normally" - but its fields
+became NaN ("not a number") in model year 2090. Lesson 1: "ended normally"
+does not prove a run is healthy.
+
+Why the model did not stop: its safety check only runs when the monitor
+prints (once a year in my setup), and it tests "is the temperature range
+bigger than a limit?". Any comparison with NaN is false, so once the
+fields were NaN the check passed.
+
+How I diagnosed it:
+  - Rerun the same run up to 150 steps before the failure, save the state,
+    then run the last steps with a full snapshot at every step. MITgcm on
+    one core repeats exactly, so the blow-up came back at the same step.
+  - The pressure solver's residual grew slowly over ~100 steps, then
+    exploded over 6 steps (1.6e2, 1.2e5, 7.8e10, 4.6e27, 1e74, NaN).
+  - Where: one water column at 78 N, 2 E - the northernmost row of the
+    grid, next to the model's artificial closed wall at 80 N. Its cells are
+    92 km wide, the narrowest in the model.
+  - The column had a very fresh, cold surface layer (27.7 g/kg) on top of
+    warm Atlantic water (7.2 C). The vertical velocity in the column grew
+    about 18 times and the local vertical CFL number went from 0.03 to
+    0.52. Then impossible values appeared: 12.5 C, 36.4 g/kg, -2.5 C at
+    290 m.
+  - The tutorial moves heat and salt with a "centred second-order"
+    advection scheme, which can create new highs and lows at sharp
+    gradients when the CFL number is large.
+
+My reading: a numerical instability, not real physics - an extreme fresh
+cap + a long tracer time step + a non-monotonic scheme, in the narrowest
+cell next to an artificial wall. The AMOC had already collapsed before it
+happened, so the result up to 2089 stands.
+
+The closed wall matters: there is no Arctic Ocean in this model, so fresh
+water cannot leave the Nordic Seas northward. The fresh cap was probably
+much stronger than in the real ocean.
+
+
+========================================================================
+13. CHECKING EVERY RUN, AND TESTING A FIX
+========================================================================
+
+Integrity check of ALL runs: scan the log and every output file for NaN,
+the temperature and salinity range, and temperatures below the local
+freezing point (UNESCO formula). All runs passed except the 0.5 Sv mixed
+run (NaN from 2090). No annual-mean surface cell was more than 0.1 C below
+freezing in any run.
+
+Early warning? None at yearly resolution: the 0.5 Sv run's vertical
+velocities and CFL numbers were the same as the healthy 0.3 Sv run until
+the year before. It was only fresher (lowest salinity 23.49 vs 26.56
+g/kg). The instability grew within ~150 model days.
+
+Sensitivity test (kept out of the comparison tables):
+  - Restart from a clean state at the end of 2088 (step 751680).
+  - Original scheme: blew up again, identical numbers (630 of 630 solver
+    values the same).
+  - Flux-limited ("monotonic") scheme, tempAdvScheme = saltAdvScheme = 33,
+    nothing else changed: ran cleanly to 2200, and the AMOC stayed
+    collapsed (-0.23 to -0.11 Sv).
+  So the scheme caused the blow-up, but not the collapse.
+
+New safety rules for any future run:
+  - monitor and safety check every model month (monitorFreq = 2592000);
+  - a NaN-proof safety check: in experiments/safety_code/mon_solution.F
+    the test is rewritten as ".NOT.(range .LE. limit)", which is also true
+    for NaN, so NaN stops the run;
+  - run_experiment.sh marks a run as failed if "NaN" appears anywhere in
+    output.txt.
+  A monthly check alone is not enough: here the values were out of range
+  for only about 4 steps before turning into NaN.
+
+
+========================================================================
+14. THE FINAL CHECKS (SALT BUDGET) AND THE BIG PICTURE
+========================================================================
+
+Salt check: for every hosing run, the change in global mean salinity
+should equal dilution by the hosing water plus the salt added by
+restoring. My first prediction was 3.3-3.4% too big in EVERY run. A
+constant error points to a missing factor: 1 - 1000/1035 = 0.034. The
+model converts a freshwater MASS flux to volume using the seawater density
+1035 kg/m^3 (rhoConst), not 1000. With that factor, measured and predicted
+agree to within 0.1% in every run.
+
+Summary of everything:
+  boundary condition   hosing   AMOC change (end of hosing)   300 yr later
+  restoring            0.1 Sv   -2.27 Sv  (-11.4%)            recovered
+  restoring            0.3 Sv   -5.60 Sv  (-28.2%)            recovered
+  restoring            0.5 Sv   -8.17 Sv  (-41.1%)            recovered
+  mixed                0.1 Sv   -19.70 Sv (collapsed)         still off
+  mixed                0.3 Sv   -19.80 Sv (collapsed)         still off
+  mixed                0.5 Sv   collapsed, then numerical failure in 2090
+
+The connection to Stommel's box model (project 14): Stommel's "delta"
+compares how fast salinity is pulled back with how fast temperature is.
+With restoring here, delta = 60/180 = 0.33. With mixed boundary
+conditions, delta = 0: nothing pulls salinity back. The deeper point is
+how strong the salinity pull is compared with the circulation: restoring
+cancelled 80-87% of the hosing, so the salt feedback never took hold.
+Without it, the model behaves like Stommel's model with two states.
+
+Limitations to remember: coarse 4-degree grid, no atmosphere or sea ice,
+idealized uncompensated hosing (sea level rises several metres), distorted
+time scales, closed wall at 80 N, the shock of switching boundary
+conditions, one run per case, and the AMOC index excludes the
+eddy-driven (GM) part.
+
+
+========================================================================
+15. IF I DID IT AGAIN: A CHECKLIST
+========================================================================
+
+ 1. Check tools: gfortran, make, netCDF (uname -m for the chip type).
+ 2. Clone one MITgcm release with --depth 1; record the tag and commit.
+ 3. Build the tutorial with genmake2 / make depend / make, using the
+    build-options file for your computer.
+ 4. Run the tutorial's test unchanged and compare with results/output.txt.
+    Do not change anything until this matches.
+ 5. Time a short run to plan the long ones.
+ 6. Read the "data" file and the forcing code before changing anything.
+    Write down units and signs.
+ 7. Add diagnostics; test the output with a 2-year run first.
+ 8. Spin up (here 2000 years). Check drift at the end.
+ 9. Build masks and plot them on maps.
+10. Make forcing files; integrate them back from disk to check totals.
+11. Run experiments from the spun-up state; keep one changed settings
+    file per run in experiments/.
+12. Check every run for NaN, not just "ended normally". Monitor at least
+    monthly with a NaN-proof check.
+13. Close the budgets (salt here). A constant percentage error usually
+    means a missing factor, not physics.
+14. Keep runs outside git; keep only small files in the repo.
+
+
+========================================================================
+16. MISTAKES I MADE AND HOW I CAUGHT THEM
+========================================================================
+
+ - Linker could not find netCDF -> added Homebrew's lib folder to
+   LIBRARY_PATH.
+ - Streamfunction with the wrong sign -> the first plot showed the AMOC
+   negative.
+ - GM_PsiY always zero -> found in the 2-year output test, dropped it.
+ - Script read "nIter0" as part of the number (0720000 read as octal) ->
+   the pickup check stopped the run before it started.
+ - Guessed that hosing doesn't change total salt -> wrong; the runs
+   showed dilution.
+ - A "negative salinity" alarm -> it was a land point.
+ - "Ended normally" with NaN inside -> now checked explicitly.
+ - Salt prediction 3.4% off -> missing 1000/1035 density factor.
+
+
+========================================================================
+17. WORDS TO KNOW (GLOSSARY)
+========================================================================
+
+AMOC         Atlantic Meridional Overturning Circulation, the north-south
+             loop of water in the Atlantic.
+Sv           Sverdrup, 1 million cubic metres per second.
+Hosing       Adding extra fresh water to the ocean surface in a model.
+Spin-up      Running a model a long time so it settles into balance.
+Pickup       A saved model state to restart from.
+Restoring    Pulling a surface value back toward observations.
+Mixed boundary conditions
+             Temperature restored, salinity given a fixed flux.
+EmPmR        Evaporation minus precipitation minus runoff (freshwater
+             flux; positive = water leaves the ocean).
+SRELAX       Salt added (positive) or removed by salinity restoring.
+Streamfunction
+             Total northward water transport above a given depth.
+CFL number   How far water moves in one time step, as a fraction of a
+             grid cell. Near 1 = danger.
+NaN          "Not a number" - what a computer produces when a calculation
+             blows up.
+Advection scheme
+             The method the model uses to move heat and salt with the
+             flow. "Centred" schemes can create false highs and lows;
+             "flux-limited" schemes cannot.
+Linear free surface
+             The sea surface can move up and down, but the model's cells
+             keep their thickness for heat and salt.
+genmake2 / make
+             The two tools that build the MITgcm program.
+rhoConst     The model's reference seawater density, 1035 kg/m^3.
+
+Files in this project:
+  scripts/build.sh, run_experiment.sh, run_hosing_set.sh
+  experiments/<run>/        changed settings for each run
+  notebooks/01-07           the analysis, one step each
+  src/amoc_tools.py         shared AMOC functions
+  figures/, data/           results
+  README.md, TUTORIAL.md    summary and detailed record

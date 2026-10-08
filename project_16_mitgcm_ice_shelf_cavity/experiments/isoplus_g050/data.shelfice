@@ -1,0 +1,22 @@
+# ISOMIP+ Ocean0 melt settings (Sect. 3.1.8), calibration run isoplus_g050.
+# Uses the project copy of shelfice_thermodynamics.F (experiments/isomip_plus_code):
+# gamma_T = Gamma_T x u*, gamma_S = Gamma_S x u*, u*^2 = Cd (u^2 + 0.01^2).
+ &SHELFICE_PARM01
+ SHELFICEtopoFile='icetopo_isoplus.bin',
+ SHELFICEloadAnomalyFile='load_isoplus.bin',
+ useISOMIPTD=.FALSE.,
+# average T, S and velocity over one cell thickness under the ice (Losch 2008)
+ SHELFICEboundaryLayer=.TRUE.,
+# velocity-dependent transfer coefficients (ISOMIP+ form, see the code copy)
+ SHELFICEuseGammaFrict=.TRUE.,
+# non-dimensional Gamma_T, the value being calibrated
+ SHELFICEheatTransCoeff=0.05,
+# Gamma_S = Gamma_T / 35
+ SHELFICEsaltToHeatRatio=0.0285714285714,
+# top drag coefficient 2.5e-3 for u* and for the ice-base drag (Table 4)
+ shiCdrag=2.5E-3,
+ SHELFICEDragQuadratic=2.5E-3,
+# perfectly insulating ice (Table 4: heat diffusivity into the ice = 0)
+ SHELFICEkappa=0.,
+ no_slip_shelfice=.FALSE.,
+ &

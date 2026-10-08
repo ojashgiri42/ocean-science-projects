@@ -1,0 +1,10 @@
+experiment,step,what_changed,thermal_forcing_c,melt_m_ice_per_yr,reference,ratio_to_reference,note
+baseline (sealed),step 2,no restoring (sealed box),-,0.03860,-,,still falling (no heat source)
+open_base,step 3,far field -1.9 °C,0.52,0.02520,open_p10,0.1215,change in last year -3.7%
+open_p05,step 3,far field -1.4 °C,1.02,0.10393,open_p10,0.5011,change in last year +0.2%
+open_p10,step 3,far field -0.9 °C,1.52,0.20739,open_p10,1.0000,change in last year -2.0%
+open_p20,step 3,far field +0.1 °C,2.52,0.41489,open_p10,2.0005,change in last year +0.3%
+open_g05,step 4,gamma_T halved (0.5e-4 m/s),1.52,0.17966,open_p10,0.8663,change in last year -2.0%
+open_g20,step 4,gamma_T doubled (2.0e-4 m/s),1.52,0.23363,open_p10,1.1265,change in last year -2.1%
+open_frict,step 4,velocity-dependent gamma,1.52,0.05874,open_p10,0.2832,change in last year -3.0%
+fine_p10,step 6,half the grid spacing,1.52,0.25941,open_p10 (same years),1.0862,mean of year 2; not steady yet

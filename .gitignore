@@ -1,0 +1,81 @@
+# ============================================================
+# Ocean Science Portfolio — Git Ignore
+# ============================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# macOS Finder metadata
+._*
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python environments
+.venv/
+venv/
+env/
+ENV/
+
+# Scientific data files
+*.nc
+*.nc4
+*.h5
+*.hdf5
+*.grib
+*.grib2
+*.grb
+
+# Temporary / cache files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.log
+
+# OS / editor files
+.vscode/
+.idea/
+
+# Temporary notebooks / files
+Untitled.ipynb
+untitled.ipynb
+untitled.txt
+
+# Python distribution
+build/
+dist/
+*.egg-info/
+
+# Secrets / credentials
+.env
+.env.*
+!.env.example
+
+# ------------------------------------------------------------
+# Project 15 (MITgcm hosing): keep model builds and raw output out of git.
+# Rules are limited to this folder so other projects are unaffected.
+# ------------------------------------------------------------
+project_15_mitgcm_freshwater_hosing/**/build/
+project_15_mitgcm_freshwater_hosing/**/run*/
+project_15_mitgcm_freshwater_hosing/**/*.data
+project_15_mitgcm_freshwater_hosing/**/*.meta
+project_15_mitgcm_freshwater_hosing/**/pickup*
+
+# ------------------------------------------------------------
+# Project 16 (MITgcm ice-shelf cavity): keep model builds and raw output out of git.
+# Rules are limited to this folder so other projects are unaffected.
+# ------------------------------------------------------------
+project_16_mitgcm_ice_shelf_cavity/**/build/
+project_16_mitgcm_ice_shelf_cavity/**/run*/
+project_16_mitgcm_ice_shelf_cavity/**/*.data
+project_16_mitgcm_ice_shelf_cavity/**/*.meta
+project_16_mitgcm_ice_shelf_cavity/**/pickup*

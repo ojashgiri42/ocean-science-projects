@@ -1,0 +1,786 @@
+NUMERICAL MIXING TUTORIAL
+by Ojash Giri
+Project 18: How much fake mixing does an ocean model make?
+(The lock-exchange test in Oceananigans.jl)
+
+A step-by-step account of everything I did, from installing the software
+to the final summary, written so that I (or anyone) could repeat it
+alone. Every number in this note comes from my own runs and notebooks.
+Where something went wrong, I say so, and how I found out.
+
+========================================================================
+CONTENTS
+========================================================================
+ 0. The idea in plain words
+ 1. What you need before you start
+ 2. Installing Julia, Oceananigans and the Python side
+ 3. Setting up the project folder (and protecting my other work)
+ 4. The test case: the lock exchange
+ 5. How I measured mixing
+ 6. The model code, block by block
+ 7. Step 1: a tiny first run, and three problems I found
+ 8. Step 2: the baseline run
+ 9. Step 3: three tracer advection schemes
+10. Step 4: grid resolution
+11. Step 5: viscosity and the grid Reynolds number
+12. Step 6: the time step, and when the model breaks
+13. Step 7: the summary of all 34 runs
+14. The big picture: why this matters for climate models
+15. If I did it again: a checklist
+16. Mistakes I made and how I caught them
+17. What I would do next
+18. Words to know (glossary)
+19. References
+
+
+========================================================================
+0. THE IDEA IN PLAIN WORDS
+========================================================================
+
+An ocean model cuts the ocean into boxes (grid cells) and moves heat,
+salt and water between neighbouring boxes every time step. Moving a
+property across a box face needs a guess of its value AT the face,
+because the model only knows the average in each box. That guess is
+never perfect. The error usually smears sharp boundaries between water
+masses, exactly as real mixing would. This is "numerical" or "spurious"
+mixing: mixing that comes from the arithmetic, not from the physics.
+
+Why care? Real mixing in the deep ocean is very weak. If the model's
+fake mixing is bigger than the real one, the model slowly destroys its
+own water masses. In a climate model that runs for hundreds of years,
+that can weaken the layering of the ocean and change the overturning
+circulation.
+
+How do you measure fake mixing? Switch real mixing OFF (zero tracer
+diffusivity). Then any mixing you see must be fake. I did this in a
+classic test, the "lock exchange": dense water on one side of a channel,
+light water on the other, and a wall (the lock) between them that is
+removed at the start. The dense water slides under the light water.
+With zero diffusivity the two should stay perfectly separate. They
+don't, and how much they mix tells you how much fake mixing the model
+makes.
+
+What I did in this project:
+  1. Set up the lock exchange of Ilicak et al. (2012) in Oceananigans,
+     a modern ocean model written in the Julia language.
+  2. Measured the mixing four ways (section 5).
+  3. Changed one numerical choice at a time: the tracer advection
+     scheme, the grid size, the viscosity (and the momentum scheme),
+     and the time step.
+  4. Put all 34 runs in one table and asked: which choice makes the
+     most fake mixing?
+
+The short answer: the momentum side (viscosity and momentum scheme)
+decided HOW MUCH the water mixed; the tracer scheme decided whether the
+model INVENTED water that should not exist; a finer grid helped little;
+and the time step did not matter until it was large enough to break
+things.
+
+
+========================================================================
+1. WHAT YOU NEED BEFORE YOU START
+========================================================================
+
+- A computer. I used a MacBook with an M1 chip, CPU only (no GPU). The
+  whole project ran in about 5 minutes of computing, plus compiling.
+- About 1 GB of disk for the Julia packages (in ~/.julia) and about
+  420 MB for the model output of all runs.
+- Julia (the programming language Oceananigans is written in).
+- Python 3 with numpy, pandas, xarray, netCDF4, matplotlib and Jupyter
+  for the analysis. These were already installed in my "ocean" Python
+  environment (miniforge), so I added nothing on the Python side.
+- The paper: Ilicak et al. (2012), Ocean Modelling 45-46, 37-58. I read
+  Section 3 (the lock exchange) closely and checked my setup against it.
+
+
+========================================================================
+2. INSTALLING JULIA, OCEANANIGANS AND THE PYTHON SIDE
+========================================================================
+
+2.1 Julia. Julia is installed with "juliaup", the official installer,
+    which also lets you switch versions later. On a Mac:
+
+        curl -fsSL https://install.julialang.org | sh
+
+    I have Julia 1.13.1. Oceananigans needs 1.10 or newer, so that is
+    fine. My terminal did not always find "julia", so I called it by
+    its full path: ~/.juliaup/bin/julia
+
+2.2 A project environment. Julia can keep a separate set of packages
+    for each project, in two files inside the project folder:
+      - Project.toml lists the packages I asked for;
+      - Manifest.toml records the exact version of EVERY package,
+        including all the packages those depend on.
+    Committing both files to git means anyone can rebuild exactly my
+    set of versions later. From the project folder:
+
+        julia --project=. -e 'using Pkg; Pkg.add(["Oceananigans", "NCDatasets"])'
+
+    "--project=." means "use the environment in this folder". This took
+    1 minute 44 seconds and put about 1 GB in ~/.julia.
+
+2.3 What got installed: Oceananigans 0.113.5 and NCDatasets 0.14.15.
+    NCDatasets is needed to write NetCDF files (the standard file format
+    for ocean data, which Python's xarray reads directly). Oceananigans
+    only switches on its NetCDF writer after "using NCDatasets"; my very
+    first run failed with an error saying exactly that.
+
+2.4 To rebuild the environment somewhere else, you don't use Pkg.add,
+    you use:
+
+        julia --project=. -e 'using Pkg; Pkg.instantiate()'
+
+    which installs exactly the versions in Manifest.toml.
+
+2.5 Julia compiles code the first time it runs it. So the first run of
+    each script takes about 20-30 s longer than the model itself needs.
+    My tiny first run took 32 s in total; repeating it in the same Julia
+    session took well under a second. Remember this when you compare
+    run times: the first run of every script looks slow.
+
+2.6 Always read the documentation and examples for the version you
+    actually installed. Oceananigans changes quickly. The examples for
+    my version are inside ~/.julia/packages/Oceananigans/<code>/examples.
+    One of them, hydrostatic_lock_exchange.jl, was my starting point,
+    and some keyword names in older blog posts were already wrong for my
+    version (for example "overwrite_existing" is now "overwrite_files").
+
+
+========================================================================
+3. SETTING UP THE PROJECT FOLDER (AND PROTECTING MY OTHER WORK)
+========================================================================
+
+3.1 Git first. Some of my other projects had changes that were not yet
+    committed. So I made a new branch, project-18-numerical-mixing, and
+    only ever committed the project_18 folder, by name:
+
+        git add -- project_18_oceananigans_numerical_mixing
+
+    Never "git add ." or "git add -A" (they grab everything), and never
+    git stash / clean / reset / checkout on other folders. Nothing was
+    pushed to GitHub.
+
+3.2 Folder layout:
+      simulations/   the Julia model code and one run script per step
+      notebooks/     the Python notebooks (01 to 07) and mixing_tools.py
+      figures/       the figures the notebooks make
+      data/          small tables (CSV) the notebooks make
+      docs/          this note
+      Project.toml, Manifest.toml   the Julia environment
+
+3.3 Raw model output stays OUTSIDE the repository, in
+    ~/oceananigans_runs/numerical_mixing/<run_name>/. Model output is
+    big (the finest run alone is 102 MB) and can always be made again
+    from the scripts, so it does not belong in git.
+
+3.4 Before every batch of runs I wrote down the number of runs, the
+    expected time and the disk space, and checked them afterwards.
+
+
+========================================================================
+4. THE TEST CASE: THE LOCK EXCHANGE
+========================================================================
+
+4.1 The setup (Ilicak et al. 2012, Section 3.1):
+      - a 2D channel 64 km long and 20 m deep (it is 2D: length and
+        depth only, nothing across the channel);
+      - closed walls at both ends, no rotation;
+      - dense water in the left half, light water in the right half,
+        density difference 5 kg/m^3;
+      - everything at rest at the start.
+
+4.2 Buoyancy instead of temperature. The paper uses temperatures of 5
+    and 35 degC with a linear equation of state. I used "buoyancy" b
+    directly, which is just density turned upside down and scaled:
+
+        b = -g (rho - rho0) / rho0,   with rho0 = 1000 kg/m^3
+
+    Dense water has b = 0, light water b = 9.81 x 5 / 1000 = 0.04905
+    m/s^2. Same density contrast, simpler bookkeeping.
+
+4.3 Mixing switched off: tracer diffusivity = 0. Viscosity (friction in
+    the flow) is NOT zero: 1e-4 m^2/s in the vertical and 1e-2 m^2/s
+    sideways in the baseline (the paper's base values). Viscosity acts
+    on the velocity, not on the buoyancy, so it does not mix the water
+    masses directly. But it turns out to matter a lot (step 5).
+
+4.4 Baseline grid: 500 m cells along the channel and 1 m cells in the
+    vertical (128 x 20 cells). Each run lasts 17 hours of model time,
+    the time at which Ilicak et al. compared their models.
+
+4.5 What happens physically: the dense water slides to the right along
+    the bottom and the light water to the left along the top, as two
+    "gravity currents". Their speed has a theory (section 5.4).
+
+4.6 Model type. I used Oceananigans' hydrostatic model
+    (HydrostaticFreeSurfaceModel). "Hydrostatic" means the model
+    assumes the pressure at any depth is just the weight of the water
+    above. That is fine when the flow is much wider than it is deep:
+    here 64 km against 20 m. Ilicak's models (MITgcm, MOM, GOLD, ROMS)
+    are hydrostatic too.
+
+
+========================================================================
+5. HOW I MEASURED MIXING
+========================================================================
+
+All of these live in notebooks/mixing_tools.py, so every notebook uses
+the same code.
+
+5.1 Reference potential energy (RPE), from Winters et al. (1995).
+    Imagine taking all the water in the channel and rearranging it,
+    WITHOUT mixing it, into the calmest possible state: densest at the
+    bottom, lightest at the top, in flat layers. The potential energy of
+    that sorted state is the RPE.
+      - Sloshing and currents cannot change it: the same set of
+        densities always sorts into the same state.
+      - Only mixing can raise it: mixing makes medium water out of
+        heavy and light water, which lifts heavy water and lowers light
+        water, and the centre of mass goes up.
+    How I compute it: every cell has the same size, so I sort all the
+    cell densities from heaviest to lightest, fill the grid row by row
+    from the bottom, and add up  g x density x height x cell area.
+    I report two numbers:
+      - the change by 17 h as a fraction of the starting RPE (as in the
+        paper; it depends on where you put height zero);
+      - the rate of change at 17 h, dRPE/dt, in watts per square metre
+        of channel floor (this one does not depend on height zero).
+
+5.2 Buoyancy variance: how spread out the buoyancy values are. Without
+    mixing the same values just move around, so the variance stays
+    constant. Every loss is mixing.
+
+5.3 Overshoots: how far buoyancy goes BEYOND the starting range
+    [0, 0.04905], as a fraction of the difference. Real mixing can only
+    make in-between water. Water lighter than the lightest or denser
+    than the densest starting water is invented by the numerics.
+
+5.4 Front speed. Benjamin (1968) worked out that a gravity current in a
+    channel of depth H moves at
+
+        u_f = 0.5 x sqrt(g' H)
+
+    where g' is the "reduced gravity", here the buoyancy difference.
+    That gives 0.4952 m/s. I find the nose of the dense current on every
+    snapshot and fit a straight line to its position from 3 to 15 hours.
+    This checks the PHYSICS of the flow, not the mixing.
+
+5.5 Why several measures? Because one number can lie. Step 3 shows a
+    scheme whose RPE goes DOWN while it actually mixes a lot.
+
+
+========================================================================
+6. THE MODEL CODE, BLOCK BY BLOCK (simulations/lock_exchange.jl)
+========================================================================
+
+One plain function, run_lock_exchange(...), builds and runs one
+simulation. Every run script calls it with different settings.
+
+6.1 Constants: gravity 9.81, rho0 1000, density difference 5, buoyancy
+    difference 0.04905, length 64 km, depth 20 m, and the special
+    free-surface gravity 9.81e5 (section 7.3).
+
+6.2 The grid:
+
+        RectilinearGrid(CPU(); size = (Nx, Nz), x = (0, 64 km),
+                        z = (-20 m, 0), halo = (5, 5),
+                        topology = (Bounded, Flat, Bounded))
+
+    "Bounded" means walls; "Flat" means there is no y-direction at all.
+    The "halo" is extra cells around the edge that wide schemes like
+    WENO need to look at.
+
+6.3 The physics (the "closure"):
+
+        HorizontalScalarDiffusivity(nu = nu_h, kappa = 0)
+        VerticalScalarDiffusivity(nu = 1e-4, kappa = 0)
+
+    nu is viscosity (for the velocity), kappa is diffusivity (for the
+    buoyancy). kappa = 0 is the whole point of the project.
+
+6.4 The model: HydrostaticFreeSurfaceModel with one tracer b,
+    BuoyancyTracer() (density depends only on b), a chosen
+    momentum_advection and tracer_advection scheme, and an implicit
+    free surface. Optionally a second tracer c = 1 everywhere as a
+    check (section 7.2).
+
+6.5 Initial state: b = 0 where x < 32 km, b = 0.04905 elsewhere.
+
+6.6 Time stepping: either adaptive (Oceananigans' TimeStepWizard keeps
+    the CFL number near a target, see section 12) or a fixed step.
+
+6.7 Output: b, u and w every 10 minutes into fields.nc, as 64-bit
+    numbers. The default is 32-bit (about 7 digits), but the RPE
+    changes I measure are only about 1e-5 of the RPE, so I need more
+    digits.
+
+6.8 A health check every 10 time steps (every step in step 6). It
+    writes a line to log.csv (time, time step, smallest and largest b,
+    total buoyancy, largest speeds, CFL number) and stops the run
+    cleanly, writing down why, if:
+      - anything is NaN ("not a number") or infinite;
+      - b leaves its allowed range (one buoyancy difference beyond the
+        start range by default; adjustable, section 9.2);
+      - any speed exceeds 10 m/s.
+    I added this because in project 15 an MITgcm run blew up and still
+    reported "ended normally". Checking often, not only at the end,
+    catches that.
+
+6.9 At the end, run_info.txt records every setting, the versions,
+    whether the run completed, the number of steps and the run time.
+
+
+========================================================================
+7. STEP 1: A TINY FIRST RUN, AND THREE PROBLEMS I FOUND
+========================================================================
+
+7.1 The first run: 32 x 5 cells (2 km by 4 m), 2 hours of model time.
+    It finished in 444 steps and wrote a 105 kB file. Python read it
+    with xarray and plotted it: the chain from Julia to a figure works.
+    After 2 hours each current had moved about 4 km, which matches
+    0.5 m/s x 2 hours = 3.6 km.
+
+7.2 Problem 1: the z* grid. Oceananigans' own lock-exchange example
+    uses a "z*" vertical grid that stretches with the sea surface. To
+    test it I added a passive tracer that starts at EXACTLY 1
+    everywhere. A uniform field has nothing to mix, so a correct scheme
+    must keep it at 1 exactly. On the z* grid it drifted by 3e-4 within
+    3 hours; on a fixed vertical grid it stayed at 1 to round-off
+    (2.2e-16). A drift like that would look like fake overshoots, so I
+    used the fixed grid. This "uniform tracer" check stayed in every
+    run of the project.
+
+7.3 Problem 2: buoyancy leaking through the surface. With the real
+    gravity in the free surface, the total buoyancy changed by 0.14% in
+    2 hours, which it should not do at all. The cause: on a fixed grid
+    the sea surface moves up and down and water carrying buoyancy goes
+    in and out through the top layer. The buoyancy in that surface
+    layer explained 95% of the change. That error is about the size of
+    the mixing I want to measure, so it had to go.
+    The fix: a "stiff" free surface. I gave the free surface (and only
+    the free surface) a gravity 100 000 times larger, 9.81e5 m/s^2. The
+    surface then moves by at most 3e-7 m, the model behaves as if it
+    had a rigid lid (the classic setup for this test), and the total
+    buoyancy now changes by only about 1e-8.
+    Does a stiff surface force tiny time steps? Not with an IMPLICIT
+    free surface, which Oceananigans solves in a way that is stable for
+    any stiffness. An explicit surface would need steps under 0.113 s
+    at 500 m; my baseline used steps up to 43.9 s.
+
+7.4 Problem 3: the time step stuck at 20 s. The TimeStepWizard also
+    keeps the step below a viscous limit (about cell size squared
+    divided by viscosity). In my version it measures the cell size in
+    the y-direction too, and for a "Flat" direction it uses 1 m. So the
+    limit came out as 0.2 x (1 m)^2 / 0.01 = 20 s, even though my cells
+    are hundreds of metres wide. The fix: switch the wizard's viscous
+    check off (diffusive_cfl = Inf) and give it the real limit as its
+    largest allowed step:
+
+        max_dt = 0.2 x min(dx^2 / nu_h, dz^2 / nu_z)
+
+    I wrote a minimal example that shows the problem,
+    simulations/mwe_flat_y_diffusion_timescale.jl, with its output next
+    to it (diffusion timescale 100 s instead of 4e8 s; a 1000 s step cut
+    to 20 s). I have not reported it to the Oceananigans developers.
+
+7.5 What I learned: each of the three problems was found by checking a
+    number that should have been constant or obvious. That habit is the
+    core of the whole project.
+
+
+========================================================================
+8. STEP 2: THE BASELINE RUN
+========================================================================
+
+8.1 Settings: 500 m x 1 m cells, WENO (5th order) for both buoyancy and
+    momentum, lateral viscosity 0.01 m^2/s, adaptive step with CFL
+    target 0.2, 17 hours. 1907 steps; the script took 33 s, mostly
+    compiling.
+
+8.2 Results at 17 h:
+      - RPE up by 3.543e-5 of its start value; dRPE/dt = 1.890e-3 W/m^2.
+      - Buoyancy variance down 18.56%.
+      - Front speed 0.4793 m/s against 0.4952 m/s from theory: 3.2%
+        slower. Ilicak et al. also found the models slightly slow.
+      - The sharp interface had grown into a band of in-between water
+        about 10 m thick. With zero diffusivity, ALL of that is fake.
+
+8.3 Checks: total buoyancy changed by 1.83e-8; the uniform tracer
+    stayed at 1 to 2.2e-16; RPE never went down; overshoots only
+    2.1e-4 of the difference; largest CFL 0.257.
+
+8.4 What I learned: the flow can be right (front speed within 3%)
+    while the water masses are wrong (a fifth of the variance gone).
+    A model can pass a flow check and still fail a water-mass check.
+
+
+========================================================================
+9. STEP 3: THREE TRACER ADVECTION SCHEMES
+========================================================================
+
+9.1 What a scheme does. To move b across a cell face, the model guesses
+    b at the face from nearby cells:
+      - Centred (2nd order): the average of the two neighbours. No
+        built-in damping, so at a sharp jump it makes wiggles: values
+        above the maximum and below the minimum.
+      - Upwind-biased (3rd order): uses more cells from the side the
+        flow comes from. Some damping; fewer wiggles, but not none.
+      - WENO (5th order): makes several guesses and trusts the ones
+        from the smooth side of a jump. Almost no wiggles, but it acts
+        a bit more diffusive right at the jump.
+    Only the BUOYANCY scheme changed; momentum stayed WENO.
+
+9.2 A surprise from my own stopping rule. The centred run was stopped
+    after 59 minutes by my health check (b more than one buoyancy
+    difference outside the range). That limit was my own choice, so I
+    made it adjustable (b_range_limit) and reran with 10. It then ran
+    all 17 hours: it never blew up, it just carried huge wiggles.
+
+9.3 Results at 17 h:
+
+      scheme      RPE change   variance   overshoot   front speed
+      centred     -9.485e-5    +0.75%     2.74        0.5125 m/s
+      upwind 3    +1.577e-5    -15.24%    0.379       0.4881 m/s
+      WENO 5      +3.543e-5    -18.56%    0.0002      0.4793 m/s
+
+    Counting cells: centred had 42.6% of its cells mixed and 17.7%
+    OUTSIDE the starting range; upwind 31.3% and 11.2%; WENO 35.9% and
+    0.0%.
+
+9.4 Why the RPE went DOWN for the centred scheme. Mixing can only raise
+    the RPE. But the centred scheme invents water denser than the
+    densest and lighter than the lightest. When you sort, that extra
+    dense water sits at the very bottom and the extra light water at
+    the very top, which LOWERS the centre of mass ("anti-diffusion").
+    So the RPE says "less mixing" while the cell count shows the most
+    mixing of all three. Ilicak et al. (Section 3.5) saw the same thing
+    and called such new extremes "generally unacceptable in realistic
+    modelling".
+
+9.5 Link to project 15: there an MITgcm run blew up in one water column
+    with the centred scheme next to a very fresh surface layer, and was
+    stable with a flux-limited scheme. Step 3 shows the mechanism in a
+    clean test.
+
+9.6 What I learned: judge a scheme by the overshoots and the density
+    distribution as well as the RPE. One number can hide the worst
+    error.
+
+
+========================================================================
+10. STEP 4: GRID RESOLUTION
+========================================================================
+
+10.1 What I changed: dx = 2000, 1000, 500, 250 and 125 m, with
+     dz = dx / 500 so every grid has the same cell shape. The coarsest
+     grid has only 5 vertical levels, so it barely resolves anything.
+     The finest has 512 x 80 cells and took 23 257 steps and 123 s.
+     Centred and WENO tracer schemes; everything else as the baseline.
+     (Ilicak et al. varied dx and dz separately; I scaled them together
+     to keep the number of runs small.)
+
+10.2 Results (WENO):
+       dx (m)   RPE change   mixed cells
+       2000     5.126e-5     61.3%
+       1000     4.392e-5     40.9%
+        500     3.543e-5     35.9%
+        250     3.324e-5     34.0%
+        125     3.205e-5     33.6%
+     A 16 times finer grid reduced the mixing by a factor of only 1.6.
+     From 250 to 125 m it hardly changed.
+
+10.3 Results (centred): the overshoots got WORSE on finer grids, from
+     0.81 to 5.85 buoyancy differences. A finer grid keeps fronts
+     sharper, and the centred scheme answers a sharper front with
+     bigger wiggles.
+
+10.4 Why so little improvement? The "grid Reynolds number" (next
+     section) was between 6 200 and 99 000 in all these runs, far above
+     100. Ilicak et al. found that in that regime the fake mixing is
+     "high and steady (capped)" and that refining the grid does not
+     reduce it. My results agree.
+
+
+========================================================================
+11. STEP 5: VISCOSITY AND THE GRID REYNOLDS NUMBER
+========================================================================
+
+11.1 The grid Reynolds number in plain words:
+
+         Re = U x dx / nu
+
+     It compares how fast the flow carries momentum across one cell
+     (U dx) with how fast viscosity smooths it over that cell (nu).
+     Small Re: viscosity smooths out every cell-to-cell zigzag in the
+     velocity. Large Re: zigzags at the grid scale survive, and a noisy
+     velocity stirs the tracer at exactly the scale where advection
+     schemes make their errors. I used U = 0.495 m/s (the theoretical
+     front speed), as Ilicak et al. did.
+
+11.2 What I changed: the lateral viscosity 0.01, 0.1, 1, 10, 100 and 200
+     m^2/s, so Re from 24 761 down to 1.24. Two sets: with centred
+     momentum advection (no built-in damping) and with WENO momentum
+     advection (built-in damping). The TRACER scheme stayed WENO. All
+     runs completed. I also measured the grid-scale noise in the
+     velocity directly.
+
+11.3 Results, mixing rate dRPE/dt at 17 h (W/m^2):
+
+       nu      Re       centred momentum   WENO momentum
+       0.01    24761    4.068e-3           1.890e-3
+       0.1      2476    4.056e-3           1.882e-3
+       1         248    3.938e-3           1.861e-3
+       10       24.8    3.317e-3           1.673e-3
+       100      2.48    1.093e-3           7.070e-4
+       200      1.24    4.710e-4           4.381e-4
+
+     - Above Re = 100 the mixing is flat ("capped"): it changed by only
+       3% (centred) and 2% (WENO) over 100 times more viscosity.
+     - Below Re of about 25 it falls quickly: at Re = 1.24 it is 8.6
+       times smaller (centred) and 4.3 times smaller (WENO).
+     - WENO momentum gave 2.15 times less mixing than centred momentum
+       at low viscosity, with the SAME tracer scheme. Its velocity noise
+       was lower too (0.0104 against 0.0146 m/s).
+     - The velocity noise followed the mixing in both sets.
+
+11.4 The catch: a viscosity of 100-200 m^2/s is far too large for a real
+     ocean at 500 m. It also smooths the real currents. You can buy less
+     fake mixing with more viscosity, but you change the physics.
+
+11.5 What I learned: the tracer scheme is only half of the story. What
+     the tracer scheme has to carry is set by how noisy the velocity is,
+     and that is set by the viscosity and the momentum scheme.
+
+
+========================================================================
+12. STEP 6: THE TIME STEP, AND WHEN THE MODEL BREAKS
+========================================================================
+
+12.1 The CFL number in plain words: how many grid cells the water moves
+     in one time step,
+
+         CFL = u dt / dx + w dt / dz
+
+     A scheme builds each new value from nearby old values. If the
+     water moves further than that in one step, errors grow every step
+     and the run blows up. In this test the vertical part dominated.
+
+12.2 What I ran: the baseline with FIXED time steps for CFL 0.2, 0.5,
+     1.0 and 1.5 (dt = 27 to 205 s). The 1.5 run still finished, so I
+     added 2.0, 2.5, 3.0 and 4.0. Every run was checked at every step.
+     CFL 2.0 and 2.5 were repeated with only the NaN and speed checks,
+     to tell "badly wrong" apart from "really blowing up". I also ran
+     the adaptive wizard with a target of 0.5.
+
+12.3 Results:
+       CFL 0.2 to 1.0: almost no change (RPE change 3.53-3.65e-5, front
+                       speed 0.4793 m/s every time).
+       CFL 1.5:        finished, but overshoots grew from 2e-4 to 7.5e-2.
+       CFL 2.0:        stopped at 9.8 h by the range check; without it,
+                       it ran 17 h with overshoots of 3.27.
+       CFL 2.5:        stopped at 1.4 h; without the range check the
+                       speed grew to 38.7 m/s by 2.4 h: a real blow-up.
+       CFL 3.0, 4.0:   stopped at about 1.4 h and 1.0 h.
+     The adaptive wizard (target 0.2) needed 1907 steps against 2244 for
+     the fixed step, for the same answer, because it takes longer steps
+     once the flow slows down.
+
+12.4 What I learned: up to CFL 1 the time step barely matters; above it
+     the water masses go wrong BEFORE the run crashes. A crash is easy
+     to notice. Wrong-but-running is not, which is why the range check
+     matters.
+
+
+========================================================================
+13. STEP 7: THE SUMMARY OF ALL 34 RUNS
+========================================================================
+
+13.1 No new runs. notebooks/07_summary.ipynb reads all 34 run folders
+     and computes every measure the same way. The table is in
+     data/summary_all_runs.csv: scheme, grid, viscosity, Re, largest
+     CFL, RPE change, dRPE/dt, variance change, overshoot, front speed,
+     buoyancy drift, uniform-tracer check, steps, run time and status.
+     28 runs completed, 6 were stopped by the health check.
+
+13.2 A detail I had to fix. The table marks whether the RPE is a fair
+     measure for each run. My first rule, "RPE never goes down", also
+     failed two clean WENO runs, but their dips were about 1e-8 of the
+     RPE, the size of rounding errors, while the centred runs dipped by
+     about 4e-6. The rule became: RPE never falls by more than 1% of
+     its total change. Now only the runs with real invented water fail.
+
+13.3 The summary figure (figures/07_summary.png), compared with the
+     baseline:
+
+       change                              mixing    overshoot
+       baseline (WENO, 500 m, nu 0.01)     1.00x     2.1e-4
+       tracer: upwind 3rd order            n/a       0.38
+       tracer: centred 2nd order           n/a       2.7
+       grid: 2000 m (5 levels)             1.45x     3.6e-5
+       grid: 125 m                         0.90x     3.2e-4
+       momentum: centred, nu 0.01          1.99x     3.1e-4
+       viscosity 200, WENO momentum        0.28x     2.2e-4
+       viscosity 200, centred momentum     0.30x     2.2e-4
+       time step: CFL 1.0                  1.03x     2.3e-4
+       time step: CFL 1.5                  0.96x     7.5e-2
+
+13.4 Checks over all runs: total buoyancy changed by at most 2.2e-8,
+     and the uniform tracer stayed at 1 to within 3e-15 in every run up
+     to CFL 1.0.
+
+13.5 The conclusions:
+       - Most fake mixing: low viscosity (high Re) with a momentum
+         scheme that has no damping of its own.
+       - Worst water masses: the tracer schemes that are not
+         "monotone" (centred, upwind-biased), which invent new water.
+       - A finer grid helped little while Re stayed far above 100.
+       - The time step did not matter up to CFL 1.
+
+
+========================================================================
+14. THE BIG PICTURE: WHY THIS MATTERS FOR CLIMATE MODELS
+========================================================================
+
+A climate model runs for hundreds of years, and fake mixing acts at
+every time step. Mixing across the boundary between water masses lifts
+dense water and lowers light water: the layering of the ocean weakens
+and the potential energy rises, which is exactly what the RPE measures.
+Over centuries this can wear away the properties of deep water masses
+and change the density differences that drive the overturning
+circulation (the AMOC from project 15 is one example). Model mixing
+parameters are tuned on top of the fake mixing, so a large fake part
+can be hidden by the tuning.
+
+My test only shows the mechanism, in 2D, over 17 hours. It does not
+say how big the effect is in a real climate model.
+
+
+========================================================================
+15. IF I DID IT AGAIN: A CHECKLIST
+========================================================================
+
+[ ] Make a branch; commit only the project folder, by name.
+[ ] Use a Julia project environment; commit Project.toml and
+    Manifest.toml.
+[ ] Read the docs and examples of the INSTALLED version.
+[ ] Keep raw output outside the repository.
+[ ] Before each batch: number of runs, time, disk space.
+[ ] Add a tracer that starts at exactly 1 and must stay at 1.
+[ ] Check total buoyancy every few steps; it must not change.
+[ ] Check the time step the model actually uses; is it what you expect?
+[ ] Save output in 64-bit when the signal is small.
+[ ] Check often for NaN and out-of-range values, and stop cleanly.
+[ ] Check the flow against theory (front speed) AND the water masses
+    (RPE, variance, overshoots, density distribution).
+[ ] Don't trust one number: the RPE fails for schemes that invent water.
+[ ] Change one thing at a time.
+[ ] Remember the first run of each script includes compiling time.
+
+
+========================================================================
+16. MISTAKES I MADE AND HOW I CAUGHT THEM
+========================================================================
+
+- Forgot "using NCDatasets": the NetCDF writer would not load. The
+  error message said so directly.
+- Used "overwrite_existing" from an older example; my version calls it
+  "overwrite_files". Read the installed version's docs.
+- Buoyancy not conserved (-0.14%) with the real free surface: caught by
+  adding up total buoyancy; fixed with the stiff implicit surface.
+- Time step stuck at 20 s: caught by looking at the time steps in the
+  log; fixed by giving the wizard the real viscous limit.
+- My range check "blew up" a centred run that was actually still
+  running: made the limit adjustable, so "stopped by my rule" and
+  "really unstable" can be told apart.
+- "Outside the range" percentages were misleading with a tolerance of
+  1e-9; changed to a margin of 0.05 kg/m^3 (1% of the difference).
+- In plots, the dense and light curves are mirror images and lay
+  exactly on top of each other; I used different line styles and a
+  note so it doesn't look like a curve is missing.
+- CFL 1.5 did not blow up as I expected, so I extended the test to
+  4.0 instead of guessing where it breaks.
+- My first "RPE valid" rule was too strict and failed runs over
+  rounding-sized dips (step 7).
+- I first listed MPAS-O among Ilicak's models from memory; checking the
+  paper showed they used MITgcm, MOM, GOLD and ROMS.
+
+
+========================================================================
+17. WHAT I WOULD DO NEXT
+========================================================================
+
+17.1 My ice-shelf cavity runs (project 16) used MITgcm's default
+     tracer scheme (centred, 2nd order) with a sideways diffusivity of
+     100 m^2/s; the ISOMIP+ run used a flux-limited scheme (33) with
+     1 m^2/s. A thin meltwater plume under a sloping ice base, on a
+     grid of steps, is a hard case for fake mixing. I would add a
+     passive tracer and a "must stay 1" tracer, compute how much the
+     tracer variance is destroyed beyond what the explicit diffusion
+     explains, and compare the two schemes and two resolutions. The RPE
+     method does not carry over directly, because the cavity also has
+     melting, restoring and an open boundary.
+
+17.2 Numerical mixing in water-mass budgets. A model's budget in
+     density classes says how much water is turned from one class into
+     another, by surface fluxes and by mixing. The surface fluxes and
+     the explicit mixing can be calculated from output; the fake mixing
+     usually cannot, so it is found as what is left over. I would like
+     to learn how to compute that term in a realistic model and how big
+     it is in the deep ocean, where real mixing is weak.
+
+
+========================================================================
+18. WORDS TO KNOW (GLOSSARY)
+========================================================================
+
+Advection: carrying a property (heat, salt, buoyancy) with the flow.
+Advection scheme: the rule a model uses to guess a property at a cell
+  face so it can move it to the next cell.
+Anti-diffusion: a numerical error that sharpens instead of smearing,
+  and can lower the RPE.
+Buoyancy (b): density turned upside down and scaled; light water has
+  high b.
+CFL number: how many cells the water moves in one time step.
+Consistency check: a tracer that starts uniform must stay uniform.
+Diffusivity (kappa): how fast a property spreads by mixing. Zero here.
+Explicit / implicit: an explicit method uses only old values (simple,
+  but limited time step); an implicit one solves for the new values
+  together (stable for any step).
+Free surface: the sea surface, allowed to move up and down.
+Front speed: how fast the nose of a gravity current moves.
+Gravity current: dense water flowing under light water (or the other
+  way round).
+Grid Reynolds number: U dx / nu; above about 100 the fake mixing here
+  was "capped" (high and flat).
+Hydrostatic: pressure equals the weight of the water above.
+Lock exchange: dense and light water side by side, released at once.
+Monotone scheme: one that never creates values outside the range of
+  its neighbours.
+NaN: "not a number"; what a model produces when it blows up.
+Overshoot: a value beyond the starting range; invented water.
+RPE: reference potential energy; only mixing can raise it.
+Spurious (numerical) mixing: mixing that comes from the arithmetic.
+Viscosity (nu): friction in the flow; smooths the velocity.
+WENO: a high-order scheme that avoids wiggles at sharp jumps.
+
+
+========================================================================
+19. REFERENCES
+========================================================================
+
+Benjamin, T. B. (1968). Gravity currents and related phenomena. Journal
+  of Fluid Mechanics, 31(2), 209-248.
+Winters, K. B., Lombard, P. N., Riley, J. J. and D'Asaro, E. A. (1995).
+  Available potential energy and mixing in density-stratified fluids.
+  Journal of Fluid Mechanics, 289, 115-128.
+Griffies, S. M., Pacanowski, R. C. and Hallberg, R. W. (2000). Spurious
+  diapycnal mixing associated with advection in a z-coordinate ocean
+  model. Monthly Weather Review, 128(3), 538-564.
+Ilicak, M., Adcroft, A. J., Griffies, S. M. and Hallberg, R. W. (2012).
+  Spurious dianeutral mixing and the role of momentum closure. Ocean
+  Modelling, 45-46, 37-58.
+Ramadhan, A., Wagner, G. L., Hill, C., Campin, J.-M., et al. (2020).
+  Oceananigans.jl: Fast and friendly geophysical fluid dynamics on
+  GPUs. Journal of Open Source Software, 5(53), 2018.
+Oceananigans.jl documentation:
+  https://clima.github.io/OceananigansDocumentation/stable/

@@ -1,0 +1,22 @@
+# pkg/diagnostics output for project 16. Times are in seconds.
+# frequency > 0 means "write the average over this period".
+ &DIAGNOSTICS_LIST
+# 1. Monthly (30-day) means of the ice-shelf fluxes (2D):
+#    SHIfwFlx fresh water flux (kg/m^2/s, positive UPWARD, so melting is negative),
+#    SHIhtFlx heat flux into the ice (W/m^2), SHIgammT transfer coefficient (m/s),
+#    SHIuStar friction velocity at the ice base (m/s)
+  fields(1:4,1) = 'SHIfwFlx','SHIhtFlx','SHIgammT','SHIuStar',
+  fileName(1) = 'shelfice_monthly',
+  frequency(1) = 2592000.,
+# 2. Yearly (365-day) means of the 3D ocean state
+  fields(1:5,2) = 'THETA   ','SALT    ','UVEL    ','VVEL    ','WVEL    ',
+  fileName(2) = 'state_yearly',
+  frequency(2) = 31536000.,
+ &
+
+# Global statistics as text: volume-mean T and S every 30 days
+ &DIAG_STATIS_PARMS
+  stat_fields(1:2,1) = 'THETA   ','SALT    ',
+  stat_fName(1) = 'ts_global_stats',
+  stat_freq(1) = 2592000.,
+ &

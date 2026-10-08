@@ -1,0 +1,7 @@
+Oceananigans 0.113.5, Julia 1.13.1
+grid topology:                         (Bounded, Flat, Bounded)
+minimum_xspacing:                      2000.0 m
+minimum_yspacing (Flat direction):     1.0 m
+cell_diffusion_timescale from model:   100.0 s
+expected Δx^2 / ν (y is Flat):         4.0e8 s
+time step after the wizard (Δt was 1000 s): 20.0 s

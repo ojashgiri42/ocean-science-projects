@@ -1,0 +1,5 @@
+case,setting,steady_melt_m_per_yr,ratio_to_reference,change_last_year_percent,top_cell_thermal_driving_c,overturning_msv
+open_g05,gamma_T halved (0.5e-4 m/s),0.17966,0.8663,-2.01,0.00485,75.4
+open_p10,gamma_T default (1.0e-4 m/s),0.20739,1.0000,-1.98,-0.01660,77.1
+open_g20,gamma_T doubled (2.0e-4 m/s),0.23363,1.1265,-2.13,-0.03005,77.1
+open_frict,velocity-dependent gamma,0.05874,0.2832,-2.95,0.28851,99.0

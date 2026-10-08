@@ -1,0 +1,76 @@
+# ====================
+# | Model parameters |
+# ====================
+#
+# Continuous equation parameters
+ &PARM01
+ Tref = 30*-1.9,
+ Sref = 30*34.4,
+ viscAz=1.E-3,
+ viscAh=600.0,
+ no_slip_sides=.FALSE.,
+ no_slip_bottom=.FALSE.,
+ diffKhT=100.0,
+ diffKzT=5.E-5,
+ diffKhS=100.0,
+ diffKzS=5.E-5,
+ bottomDragQuadratic=2.5E-3,
+ eosType='JMD95Z',
+ HeatCapacity_cp = 3974.0,
+ rhoConst=1030.,
+ rhoConst=1030.,
+ gravity=9.81,
+ convertFW2Salt = 33.4,
+ rigidLid=.FALSE.,
+ implicitFreeSurface=.TRUE.,
+ exactConserv=.TRUE.,
+ hFacMin=0.05,
+ nonHydrostatic=.FALSE.,
+ readBinaryPrec=64,
+# project 16: write each output as one global file instead of one file per tile
+ globalFiles=.TRUE.,
+ useCDScheme = .TRUE.,
+ &
+
+# Elliptic solver parameters
+ &PARM02
+ cg2dMaxIters=1000,
+ cg2dTargetResidual=1.E-13,
+ cg3dMaxIters=400,
+ cg3dTargetResidual=1.E-13,
+ &
+
+# Time stepping parameters
+ &PARM03
+ nIter0=0,
+# project 16 step 3 (rbcs_base): 5 model years of 365 days (17520 steps of 1800 s each)
+ nTimeSteps=87600,
+ deltaT=1800.0,
+ abEps=0.1,
+ cAdjFreq = -1.,
+ tauCD = 400000.,
+# project 16: permanent pickup (restart) file every 365-day year
+ pChkptFreq=31536000.,
+ chkptFreq=0.0,
+ dumpFreq=0.0,
+# project 16: monitor and bounds check every 30 days (instability rule from project 15)
+ monitorFreq=2592000.,
+ monitorSelect=2,
+ &
+
+# Gridding parameters
+ &PARM04
+ usingSphericalPolarGrid=.TRUE.,
+ ygOrigin = -80.0,
+ delX=50*0.3,
+ delY=100*0.1,
+ delZ=30*30.0,
+ &
+
+# Input datasets
+ &PARM05
+ bathyFile='bathy.box',
+# project 16 step 3 (rbcs_base): start from rest with uniform temperature -1.9 degC,
+# the same field the restoring zone pulls toward
+ hydrogThetaFile='theta_rbcs_base.bin',
+ &

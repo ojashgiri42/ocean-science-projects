@@ -1,0 +1,5 @@
+This script compares one Argo float temperature profile with a HYCOM model temperature profile where the data was extracted from the Ifremer Argo server and a HYCOM server. Comparing model profiles with Argo observations is a basic model-observation check.
+Firstly we get the data from the servers, then we isolate the real float's location (LATITUDE, LONGITUDE) and take the first model time step (time=0) at all depths. Note: the model time is not matched to the Argo profile date (2013-01-10), and only temperature is compared.
+We apply longitude conversion (obs_lon + 360) to match coordinate systems and use method='nearest' to select the closest model grid point to the float's actual GPS position.
+We use plt.plot to display vertical temperature profiles where real Argo observations are black connected dots (ko-) and HYCOM model predictions are a solid red line (r-).
+Finally we lock the vertical view scale between 1,000 meters to 0 meters with (plt.ylim(1000, 0)) and invert the Y-axis (invert_yaxis()) to easily evaluate how well the model mimics real ocean layering.

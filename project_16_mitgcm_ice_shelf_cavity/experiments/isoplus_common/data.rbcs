@@ -1,0 +1,17 @@
+# ISOMIP+ restoring (Sect. 3.1.3, Eq. 18-20): rate rises linearly from 0 at x = 790 km
+# to 10 per day at 800 km; the mask holds the linear part, tau is 0.1 day.
+ &RBCS_PARM01
+ useRBCtemp=.TRUE.,
+ useRBCsalt=.TRUE.,
+# 0.1 day in seconds
+ tauRelaxT=8640.,
+ tauRelaxS=8640.,
+# mask 1 is used for temperature, mask 2 for salinity: both must be set
+ relaxMaskFile(1)='rbcs_mask_isoplus.bin',
+ relaxMaskFile(2)='rbcs_mask_isoplus.bin',
+# restore to the WARM profiles (Ocean0)
+ relaxTFile='theta_warm.bin',
+ relaxSFile='salt_warm.bin',
+ &
+ &RBCS_PARM02
+ &

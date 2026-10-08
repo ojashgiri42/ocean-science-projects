@@ -1,0 +1,604 @@
+TIPPING BOX MODELS TUTORIAL
+by Ojash Giri
+Project 14: Tipping points in simple box models of the ocean's
+overturning circulation, in Python
+
+A step-by-step account of everything I did, written so that I (or
+anyone) could repeat it alone. Every number in this note comes from my
+own notebooks, unless I say it comes from a paper. Where something went
+wrong, I say so, and how I found out.
+
+========================================================================
+CONTENTS
+========================================================================
+ 0. The idea in plain words
+ 1. What you need before you start
+ 2. What I read and checked
+ 3. How the project is organised, and how to run it
+ 4. Step 1: Stommel's two boxes and their steady states
+ 5. Step 2: pushing Stommel's model over the edge
+ 6. Step 3: Cessi's one-equation model and its landscape
+ 7. Step 4: adding weather noise (Kramers' law)
+ 8. Step 5: can we see the tip coming? (early warning signals)
+ 9. Step 6: a toy model of an Antarctic ice-shelf margin
+10. The big picture
+11. If I did it again: a checklist
+12. Mistakes I made and how I caught them
+13. Words to know (glossary)
+14. References
+
+
+========================================================================
+0. THE IDEA IN PLAIN WORDS
+========================================================================
+
+In the Atlantic, warm salty water flows north near the surface, cools,
+sinks, and returns south at depth. This "overturning circulation"
+carries a lot of heat. Two things set the density of sea water:
+temperature (cold water is heavy) and salt (salty water is heavy). At
+high latitudes the cold makes the water heavy, which drives the
+overturning. But rain, rivers and melting ice make the water fresher,
+and fresh water is light, which works against it.
+
+The overturning also feeds itself: it carries salty water north, which
+keeps the northern water heavy. If it weakens, less salt arrives, the
+water gets lighter, and it weakens more. This is the "salt-advection
+feedback". Because of it, the same climate can allow two different
+circulations: a strong one and a weak (or reversed) one. Switching
+between them is a "tipping point". The Atlantic overturning is on the
+list of possible tipping elements of the climate system (Lenton et al.
+2008).
+
+In 1961 Henry Stommel showed this with two boxes of water joined by a
+pipe. In 1994 Paola Cessi simplified it to one equation and added
+random "weather" noise. I used both models to ask:
+  1. Are there really two stable states, and how do they lose
+     stability?
+  2. If the forcing changes slowly, does the state jump, and does it
+     come back when the forcing is undone (hysteresis)?
+  3. Can noise alone flip the circulation, and how long does it wait?
+  4. Does the system give a warning before it tips?
+  5. Could something similar happen at the edge of an Antarctic ice
+     shelf? (a toy model of my own)
+
+Spoiler: yes to the first four, with honest error bars, and "it depends
+on things nobody has measured well" for the fifth.
+
+These are dimensionless conceptual models. They teach the mechanism;
+they do not predict the real ocean.
+
+
+========================================================================
+1. WHAT YOU NEED BEFORE YOU START
+========================================================================
+
+My computer: Apple MacBook with an M1 chip and 16 GB of memory. Every
+notebook runs on one core in under a minute (notebook 05 takes about 40
+seconds, the others under 20).
+
+Software (all already installed; nothing new was installed for this
+project):
+  - Python (Miniforge) with numpy, scipy and matplotlib.
+      numpy       arrays and maths
+      scipy       brentq (finds where a function crosses zero),
+                  minimize_scalar, linregress, kendalltau,
+                  cumulative_trapezoid
+      matplotlib  plots
+  - JupyterLab, to run the notebooks.
+
+How to check:
+    python -c "import numpy, scipy, matplotlib; print(numpy.__version__, scipy.__version__, matplotlib.__version__)"
+  It printed 2.5.2 1.18.0 3.10.9 (Python 3.13).
+
+The repository's environment.yml has these exact versions:
+    conda env create -f environment.yml
+    conda activate ocean-portfolio
+
+No model to download: the models are a few lines each, written by me in
+src/models.py.
+
+
+========================================================================
+2. WHAT I READ AND CHECKED
+========================================================================
+
+  2.1 Stommel (1961), Tellus 13, 224-230. I read the paper itself and
+      checked:
+        - the equations (in his notation x is salinity, y is
+          temperature):
+              dT/dt = 1 - T - |f| T
+              dS/dt = delta (1 - S) - |f| S
+              lambda f = -T + R S
+        - his values R = 2, delta = 1/6, lambda = 1/5,
+        - his three equilibria, read off a hand-drawn graph:
+          f = -1.1, -0.30, +0.23, and their types (stable node,
+          saddle, stable spiral) in his Table I,
+        - his condition for three equilibria: R delta < 1 when R > 1,
+        - his remark (p. 229) that the temperature-driven state
+          disappears when lambda is "slightly greater than 1/4", and
+          that the flow would then stay reversed "even when lambda was
+          restored to its original value".
+
+  2.2 Cessi (1994), J. Phys. Oceanogr. 24, 1911-1920. Her Fig. 4
+      shows the potential at p = 1.3 with mu^2 = 6.2, where the strong
+      state has just disappeared: that is my first fold. Her parameter
+      values (diffusion time 219 years, advection time
+      35 years, temperature relaxation 25 days, mu^2 = 6.2, p = 1.1)
+      are also listed by Yang, Sun and Duan (2021), who give the
+      equilibria at p = 1.1 as y = 0.2402, 0.6911 and 1.0687.
+
+  2.3 For the methods: Kramers (1940) for the escape time over a
+      barrier; Held and Kleinen (2004) and Dakos et al. (2008) for early
+      warning signals; Ditlevsen and Johnsen (2010) for when early
+      warnings fail.
+
+  2.4 For the toy model in step 6: Hellmer et al. (2012) and Hazel and
+      Stewart (2020) on warm and cold ice-shelf cavities.
+
+  2.5 All references were checked against their official DOI records
+      (journal, volume, pages).
+
+
+========================================================================
+3. HOW THE PROJECT IS ORGANISED, AND HOW TO RUN IT
+========================================================================
+
+  project_14_tipping_box_models/
+    src/models.py   all model equations, as small functions. Every
+                    function takes its parameters as arguments, so each
+                    notebook can choose its own values.
+    notebooks/      six notebooks, 01 to 06, one per step
+    figures/        every figure, saved at 150 dpi
+    docs/           this note
+    README.md       short summary of the results
+    TUTORIAL.md     a walk-through of every notebook, block by block
+
+How to run:
+  1. conda activate ocean-portfolio
+  2. jupyter lab
+  3. Open notebooks/01_stommel_equilibria.ipynb and choose
+     "Run All Cells". Then 02, 03, and so on.
+  Each notebook prints its key numbers at the end and saves its
+  figures to figures/. The notebooks with noise use fixed random seeds,
+  so the numbers repeat exactly.
+
+Before trusting a notebook, I restart the kernel and run all cells from
+the top. A notebook run cell by cell, out of order, can show numbers
+that no longer match its code.
+
+
+========================================================================
+4. STEP 1: STOMMEL'S TWO BOXES AND THEIR STEADY STATES
+========================================================================
+
+Notebook: 01_stommel_equilibria.ipynb
+
+The model. T and S are the temperature and salinity differences
+between the boxes (dimensionless). Both are pulled back toward 1 by the
+surroundings ("restoring"): temperature quickly, salinity slowly
+(delta = 1/6). The flow f through the pipe is driven by the density
+difference: f = (-T + R S)/lambda. f < 0 means a temperature-driven
+flow (like today's overturning), f > 0 a salinity-driven one, running
+the other way. The flow mixes the boxes at a rate |f|.
+
+Why two states are possible at all: salinity is restored more weakly
+than temperature. Stommel's condition is R delta < 1; here it is 1/3.
+If salinity were held as tightly as temperature, the salt-advection
+feedback would have nothing to work with.
+
+What I did:
+  4.1 At steady state, T = 1/(1+|f|) and S = delta/(delta+|f|). Put
+      these into the flow law and you get one equation in f alone. I
+      plotted both sides (Stommel's graphical method) and found where
+      they cross with brentq.
+  4.2 For each equilibrium I computed the 2x2 Jacobian (how the
+      tendencies change when T or S is nudged) and its eigenvalues.
+  4.3 I ran forward Euler from 10 starting states.
+
+Results:
+  equilibrium        f (mine)  f (Stommel)  eigenvalues        type
+  temperature-driven -1.0679   -1.1         -3.610, -0.761     stable node
+  middle             -0.3070   -0.30        -2.849, +0.761     saddle
+  salinity-driven    +0.2191   +0.23        -0.912 +/- 1.823i  stable spiral
+
+  8 of my 10 starting states ended in the temperature-driven state.
+  These are hand-picked points, not a measure of how big each basin is.
+
+Time step check: the end states with dt and dt/2 agree to 1.34e-13,
+but that proves nothing (see mistake 1 in section 12). The whole paths
+agree to 1.91e-3 with dt = 0.002.
+
+
+========================================================================
+5. STEP 2: PUSHING STOMMEL'S MODEL OVER THE EDGE
+========================================================================
+
+Notebook: 02_stommel_hysteresis.ipynb
+
+The idea: make the pipe slowly harder to flow through (raise lambda)
+and watch the temperature-driven state.
+
+What I did:
+  5.1 Found all equilibria at 701 values of lambda between 0.1 and
+      0.45.
+  5.2 Found the fold (where the temperature-driven state and the
+      saddle meet and vanish) in two independent ways: bisection, and
+      the maximum of lambda(f) = rhs(f)/f.
+  5.3 Swept lambda from 0.1 up to 0.45 and back down in steps of
+      0.005, running 200 time units at each step and starting each step
+      from where the last one ended. That memory is what makes
+      hysteresis possible.
+
+Results:
+  - Fold at lambda = 0.333800 (bisection) and 0.333801 (maximum), at
+    f = -0.4837. lambda(f) at f = -0.5 is exactly 1/3, a good quick
+    estimate.
+  - Stommel's estimate from his graph, "slightly greater than 1/4", is
+    too low: at lambda = 0.26 and 0.30 the temperature-driven state
+    still exists (2 equilibria with f < 0).
+  - On the way up, f was -0.5331 at lambda = 0.330 and jumped to
+    +0.2042 at lambda = 0.335.
+  - On the way down, f stayed positive the whole way (smallest
+    +0.1937) and ended at +0.2328 at lambda = 0.1, where the sweep had
+    started at f = -1.8542. Undoing the change did not bring the
+    temperature-driven state back, as Stommel had already said.
+  - Every step settled (largest leftover tendency 9.97e-12).
+
+Just past the fold the system moves very slowly before it jumps. That
+slowness is the seed of the early warnings in step 5.
+
+
+========================================================================
+6. STEP 3: CESSI'S ONE-EQUATION MODEL AND ITS LANDSCAPE
+========================================================================
+
+Notebook: 03_cessi_landscape.ipynb
+
+The model:
+    dy/dt = p - y (1 + mu2 (1 - y)^2),     mu2 = 6.2
+
+  y   salinity difference. Small y = strong overturning.
+  p   freshwater forcing (evaporation minus rain), which builds up y.
+  y * 1              slow diffusion between the boxes.
+  y * mu2 (1 - y)^2  salt carried by the flow. The flow is proportional
+                     to the density difference, 1 - y, and Cessi made
+                     the exchange grow with the SQUARE of the flow
+                     (Stommel used |f|). This keeps the equation smooth.
+  Temperature is fixed at 1, because it relaxes in about 25 days,
+  far faster than salinity.
+  Time is in "diffusion times", about 219 years each.
+
+Because there is one variable, dy/dt = -dV/dy for a potential V(y):
+picture a ball rolling downhill in a landscape, through thick syrup.
+Valleys are stable states, hills unstable ones.
+
+Results:
+  - Folds at p = 1.2962 (y = 0.4272, where the strong state ends) and
+    p = 0.9556 (y = 0.9061, where the weak state ends). Between them
+    there are three equilibria. Cessi's Fig. 4 puts the first fold at
+    about 1.3. I found no published value for the second.
+  - At p = 1.1: strong valley y = 0.2402, hill 0.6911, weak valley
+    1.0687, the same as Yang et al. (2021). The barrier from the strong
+    valley to the hill is 0.05710, from the weak valley 0.03560.
+  - Ramping p from 0.8 to 1.5 and back over 500 diffusion times each
+    way (109,500 years), the jumps came 0.0182 past each fold. With a
+    ramp 4 times slower, 0.0072. The ratio, 2.53, is close to
+    4^(2/3) = 2.52, the scaling expected for a slow ramp through a fold.
+    Only two ramp speeds, so this is a consistency check, not a proof.
+
+
+========================================================================
+7. STEP 4: ADDING WEATHER NOISE (KRAMERS' LAW)
+========================================================================
+
+Notebook: 04_cessi_noise.ipynb
+
+The model: the same equation with a random kick added every time step
+(white noise of size sigma), integrated with the Euler-Maruyama method.
+The kick scales with sqrt(dt), not dt, because random kicks add up like
+a random walk.
+
+What I did:
+  7.1 One long run at p = 1.1, sigma = 0.2: 20,000 diffusion times
+      (4.38 million years). A flip counts only when y goes all the way
+      from one side to the other (two thresholds, at 0.4656 and
+      0.8799), so wiggles near the hilltop are not counted.
+  7.2 Compared the histogram of y with the exact long-run distribution,
+      proportional to exp(-2V/sigma^2).
+  7.3 Kramers' law: at 6 noise levels from 0.18 to 0.30, measured the
+      mean time spent in the strong state. Kramers (1940) predicts that
+      ln(time) against 1/sigma^2 is a straight line with slope
+      2 x barrier = 0.1142.
+  7.4 Computed the EXACT mean time to cross (the mean first-passage
+      time), which needs no weak-noise approximation.
+  7.5 Time step check with 20,000 walkers started at the low threshold.
+
+Results:
+  - Example run: 411 flips. Mean stay in the strong state 71.5
+    diffusion times (15.7 kyr), in the weak state 25.4 (5.6 kyr).
+  - y was below the hill 73.9 +/- 2.4% of the time; theory says 72.4%.
+  - Fitted slope 0.1188 +/- 0.0026 (95% interval 0.1117 to 0.1260),
+    which includes Kramers' 0.1142.
+  - The waiting times are 4-17% shorter than Kramers' formula. Two
+    reasons: my timer starts at the low threshold, partway up the
+    barrier (the exact time from the valley bottom is 5-16% longer),
+    and the noise is not weak (2 x barrier / sigma^2 is only 1.3 to
+    3.5).
+  - The exact passage times agree with the simulations within 1.1
+    standard errors at the four weaker noise levels. At sigma = 0.276
+    and 0.30 the simulations are 14% and 8% longer.
+  - Time step check at sigma = 0.30: 11.518 +/- 0.086 with dt = 0.01,
+    11.144 +/- 0.083 with dt = 0.0025, exact 11.057. So dt = 0.01 adds
+    about 4% here, and the error shrinks with dt.
+
+
+========================================================================
+8. STEP 5: CAN WE SEE THE TIP COMING? (EARLY WARNING SIGNALS)
+========================================================================
+
+Notebook: 05_early_warning.ipynb
+
+The idea ("critical slowing down"): near a fold the valley becomes
+flat, so the pull back to the strong state, the recovery rate r, goes
+to zero. A system that recovers slowly lets each kick last longer, so
+its wobbles get bigger (variance rises) and each value looks more like
+the one before (lag-1 autocorrelation rises). Linear theory says
+variance = sigma^2/(2r) and lag-1 autocorrelation = exp(-r dt).
+
+What I did:
+  8.1 Ramped p from 1.0 to 1.4 over 4000 diffusion times with weak
+      noise (sigma = 0.04).
+  8.2 Kept one value every 0.5 diffusion times (like a proxy record),
+      removed the slow trend with a centred 50-unit rolling mean, and
+      stopped 10 units before the tip (otherwise the jump itself leaks
+      into the statistics).
+  8.3 Computed variance and lag-1 autocorrelation in trailing windows
+      250 units long, and their trend with Kendall's tau (+1 = always
+      rising, 0 = no trend).
+  8.4 Repeated everything for 100 runs with different random numbers,
+      and for 100 control runs at a fixed p = 1.1 (no fold).
+
+Results:
+  - The recovery rate falls from r = 2.947 at p = 1.00 (74 years) to
+    0.349 at p = 1.29 (627 years), and reaches 0 at the fold.
+  - The run shown tipped at p = 1.2695 (t = 2695.3 diffusion times,
+    590 kyr), before the fold at 1.2962: near the fold the barrier is
+    so low that noise pushes y over the hill early.
+  - Kendall tau 0.880 (variance) and 0.735 (autocorrelation). Variance
+    in the last window 9.54e-4, against 8.56e-4 from linear theory.
+  - 100 ramp runs: Kendall tau 0.775 to 0.912 (variance) and 0.664 to
+    0.855 (autocorrelation), 5-95% range. 100 control runs: -0.301 to
+    0.337 and -0.322 to 0.350. The two groups never overlap.
+
+Cautions: this is retrospective (it uses the known tip time, as in
+Dakos et al. 2008). It used one noise level and one ramp speed. And if
+noise alone causes a jump far from any fold, there need not be any
+warning (Ditlevsen and Johnsen 2010).
+
+
+========================================================================
+9. STEP 6: A TOY MODEL OF AN ANTARCTIC ICE-SHELF MARGIN
+========================================================================
+
+Notebook: 06_antarctic_toy_model.ipynb
+
+This model is my own toy, not taken from a paper; every parameter is an
+order-of-magnitude guess. Warm/cold switches of ice-shelf cavities are
+known from regional ocean models (Hellmer et al. 2012; Hazel and
+Stewart 2020), but there the switch depends on which water mass fills
+the cavity. My toy tests a different feedback:
+
+  warmer water at depth -> more melting -> fresher surface water ->
+  weaker vertical mixing -> less heat lost upward -> warmer water at
+  depth
+
+    dT/dt = (T_far - T)/tau_in - kappa(F) T - b m T^2
+    dF/dt = c m T^2 - F/tau_F
+
+  T      subsurface temperature above freezing (deg C)
+  F      surface freshening (psu)
+  T_far  far-field ocean temperature (the control knob)
+  kappa  vertical mixing rate, weakened by freshening, in two forms:
+         kappa0/(1 + F/F0)  ("rational") or kappa0 exp(-F/F0)
+  m T^2  basal melt, quadratic in temperature (m = 10 m/yr per deg C^2)
+  c      0.0154 psu of freshening per m of ice melted
+  b      0.0187 deg C of cooling per m of ice melted
+
+Results, with kappa0 = 5 per year and F0 = 0.2 psu:
+  - Rational law: no threshold. A threshold would need kappa0 of at
+    least 13.66 per year.
+  - Exponential law: a threshold. The state jumps to the warm branch at
+    T_far = 3.505 deg C going up, and back at 3.149 going down.
+  - Why they differ, worked out by hand: without the melt-cooling term,
+    a fold needs kappa0 tau_in > 8 (rational) or > 2.24 (exponential),
+    whatever the other parameters are. The notebook finds 8.000 and
+    2.241. The difference is how fast the heat loss kappa T can fall as
+    the water warms.
+  - A fairer comparison (exponential law with F0 = 0.289 psu, so both
+    laws halve the mixing at 0.2 psu) still gives a threshold, at
+    3.923 and 4.258 deg C.
+  - At T_far = 2 deg C the shelf water is only about 0.36 deg C above
+    freezing: a threshold needs strong mixing, and strong mixing keeps
+    the shelf cold. In this model, thresholds belong to cold shelves.
+
+So the toy model cannot say whether a real ice-shelf margin has a
+threshold. It does show what would decide it.
+
+
+========================================================================
+10. THE BIG PICTURE
+========================================================================
+
+  1. The salt-advection feedback gives two stable states for the same
+     forcing, as long as salinity is held less tightly than
+     temperature.
+  2. Slow forcing can push the system past a fold; it jumps, and
+     undoing the forcing does not bring it back (hysteresis).
+  3. Noise alone can flip it. The waiting time grows exponentially with
+     barrier / sigma^2, as Kramers' law says; when the noise is not
+     weak, the exact first-passage formula is the better benchmark.
+  4. Approaching a fold, the system slows down, and variance and
+     autocorrelation rise. In 100 runs out of 100 this was clear.
+  5. These ideas carry over to ice shelves, but whether a real
+     threshold exists depends on processes that are poorly known.
+
+What I would do next: run the same hysteresis experiment in a real
+ocean model (project 15 does a related freshwater-hosing experiment in
+MITgcm), and couple the ocean to
+an ice sheet, so that meltwater depends on the ocean state.
+
+
+========================================================================
+11. IF I DID IT AGAIN: A CHECKLIST
+========================================================================
+
+  [ ] Read the original paper, not only summaries, and write down
+      every number it gives (including its own estimates, like
+      Stommel's 1/4).
+  [ ] For every "expected" value, write down where it comes from.
+  [ ] Solve on paper first (equilibria, folds), then simulate.
+  [ ] Use a time step test that CAN fail: compare whole paths, not
+      only end states.
+  [ ] Check that every step of a sweep has settled.
+  [ ] Give every fitted number an uncertainty.
+  [ ] Compare with the exact answer when one exists.
+  [ ] Never trust a single random seed; add a control with no effect.
+  [ ] Be clear about what is retrospective.
+  [ ] Check units, including densities (metres of ice are not metres
+      of water).
+  [ ] Restart and run every notebook top to bottom before sharing.
+  [ ] Look at every figure before writing about it.
+
+
+========================================================================
+12. MISTAKES I MADE AND HOW I CAUGHT THEM
+========================================================================
+
+  1. A test that could not fail. My first time step check compared end
+     states, which agree for any dt (an Euler fixed point is the true
+     equilibrium). I added a comparison of whole paths.
+  2. Too little settling time. With 100 time units per lambda step, one
+     step just past the fold still had a leftover tendency of 2.5e-2.
+     The system lingers where the state used to be. Fixed with 200.
+  3. The tip inside the warning. My first early-warning statistics shot
+     up at the very end, because the jump itself got into the windows.
+     Fixed by stopping 10 diffusion times before the tip.
+  4. Too short a sweep step in the toy model (30 years): one point was
+     caught halfway past a fold. Fixed with 100 years.
+  5. A "check against the paper" whose source I had not checked: my
+     first table of Cessi's values listed "expected" numbers without a
+     source. I traced them: the first fold to Cessi's Fig. 4, the
+     valleys and hill to Yang et al. (2021). For the second fold I
+     found none, and now I say so.
+  6. A wrong description: I wrote that Cessi's flow grows with
+     (1 - y)^2. The flow grows with 1 - y; it is the exchange that goes
+     with its square.
+  7. A wrong explanation: I said Kramers' formula sits above my points
+     only because the noise is not weak. Computing the exact
+     first-passage time showed a bigger reason: my timer starts partway
+     up the barrier. A careful time step test then showed dt = 0.01
+     adds about 4%.
+  8. A missing density: I treated 1 m of melted ice as 1 m of fresh
+     water. The freshening was 12% too strong; correcting it moved the
+     toy model's thresholds from 2.943/3.300 to 3.149/3.505 deg C.
+  9. Theory at the wrong point: I first compared each window with
+     linear theory at the window's last point, which overestimates the
+     variance near the fold. Now I average the theory over the window.
+ 10. One seed. I first had a single noisy run. 100 runs and 100
+     controls now show the result is not luck.
+ 11. Overclaiming: I wrote that my warning test "only uses the past".
+     The detrending is centred and the cut-off uses the known tip
+     time, so the test is retrospective.
+ 12. Missing credit: Stommel had already estimated the fold and noted
+     the hysteresis in 1961, and the early-warning idea comes from
+     Held and Kleinen (2004) and Dakos et al. (2008). Now cited.
+ 13. A notebook saved after running cells out of order. Restart and
+     run all, every time.
+
+
+========================================================================
+13. WORDS TO KNOW (GLOSSARY)
+========================================================================
+
+  overturning        the large loop of sinking and rising water that
+  circulation        carries heat northward in the Atlantic
+  box model          an ocean described by a few well-mixed boxes
+  salt-advection     the flow brings salt, salt keeps the flow going
+  feedback
+  restoring          a boundary condition that pulls a value back to a
+                     target (as opposed to a fixed flux)
+  equilibrium        a state where nothing changes
+  stable / unstable  a small push dies away / grows
+  node, spiral,      kinds of equilibrium: approached directly;
+  saddle             approached while circling; approached along one
+                     direction but pushed away along another
+  Jacobian           table of how each tendency changes when each
+                     variable is nudged; its eigenvalues give stability
+  fold (saddle-node) where a stable and an unstable state meet and
+                     disappear
+  hysteresis         the state depends on history, not only on the
+                     current forcing
+  potential V(y)     the landscape whose slope drives the system
+  barrier            height of the hill between a valley and the next
+  forward Euler      new value = old value + time step x tendency
+  Euler-Maruyama     the same, plus a random kick of size
+                     sigma x sqrt(time step)
+  white noise        random kicks with no memory
+  Kramers' law       the mean escape time grows like
+                     exp(2 x barrier / sigma^2)
+  mean first-passage the exact average time to reach a point for the
+  time               first time
+  critical slowing   near a fold the system recovers from kicks very
+  down               slowly
+  recovery rate r    how fast a small kick decays
+  lag-1              how much each value resembles the one before
+  autocorrelation
+  Kendall's tau      a number for a trend: +1 always up, 0 no trend
+  detrending         removing the slow drift before measuring wobbles
+  retrospective      analysed afterwards, knowing when the tip happened
+  batch means        uncertainty from the spread of averages over equal
+                     parts of a run
+  diffusion time     Cessi's time unit, about 219 years
+  thermal forcing    water temperature above the local freezing point
+  ice shelf          the floating part of an ice sheet
+  basal melt         melting at the underside of an ice shelf
+
+
+========================================================================
+14. REFERENCES
+========================================================================
+
+Cessi, P. (1994). A simple box model of stochastically forced
+  thermohaline flow. Journal of Physical Oceanography, 24(9),
+  1911-1920. doi:10.1175/1520-0485(1994)024<1911:ASBMOS>2.0.CO;2
+Dakos, V., Scheffer, M., van Nes, E. H., Brovkin, V., Petoukhov, V.,
+  and Held, H. (2008). Slowing down as an early warning signal for
+  abrupt climate change. PNAS, 105(38), 14308-14312.
+  doi:10.1073/pnas.0802430105
+Ditlevsen, P. D., and Johnsen, S. J. (2010). Tipping points: Early
+  warning and wishful thinking. Geophysical Research Letters, 37(19).
+  doi:10.1029/2010GL044486
+Hazel, J. E., and Stewart, A. L. (2020). Bistability of the
+  Filchner-Ronne Ice Shelf cavity circulation and basal melt. Journal
+  of Geophysical Research: Oceans, 125(4), e2019JC015848.
+  doi:10.1029/2019JC015848
+Held, H., and Kleinen, T. (2004). Detection of climate system
+  bifurcations by degenerate fingerprinting. Geophysical Research
+  Letters, 31(23). doi:10.1029/2004GL020972
+Hellmer, H. H., Kauker, F., Timmermann, R., Determann, J., and Rae, J.
+  (2012). Twenty-first-century warming of a large Antarctic ice-shelf
+  cavity by a redirected coastal current. Nature, 485(7397), 225-228.
+  doi:10.1038/nature11064
+Kramers, H. A. (1940). Brownian motion in a field of force and the
+  diffusion model of chemical reactions. Physica, 7(4), 284-304.
+  doi:10.1016/S0031-8914(40)90098-2
+Lenton, T. M., Held, H., Kriegler, E., Hall, J. W., Lucht, W.,
+  Rahmstorf, S., and Schellnhuber, H. J. (2008). Tipping elements in
+  the Earth's climate system. PNAS, 105(6), 1786-1793.
+  doi:10.1073/pnas.0705414105
+Stommel, H. (1961). Thermohaline convection with two stable regimes of
+  flow. Tellus, 13(2), 224-230.
+  doi:10.1111/j.2153-3490.1961.tb00079.x
+Yang, F., Sun, X., and Duan, J. (2021). On the abrupt change of the
+  maximum likelihood state in a simplified stochastic thermohaline
+  circulation system. Chaos, 31(2), 021103. doi:10.1063/5.0037083

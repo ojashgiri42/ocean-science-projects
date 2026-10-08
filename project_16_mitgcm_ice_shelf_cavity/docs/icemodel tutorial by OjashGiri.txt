@@ -1,0 +1,835 @@
+ICE-SHELF MELT MODEL TUTORIAL
+by Ojash Giri
+Project 16: How fast does the ocean melt an ice shelf from below?
+(MITgcm "isomip" ice-shelf cavity experiment)
+
+A step-by-step account of everything I did, from getting the model ready
+to the final checks, written so that I (or anyone) could repeat it alone.
+Every number in this note comes from my own runs. Where something went
+wrong, I say so, and I say how I found out.
+
+========================================================================
+CONTENTS
+========================================================================
+ 0. The idea in plain words
+ 1. What you need before you start
+ 2. What I installed and downloaded
+ 3. Getting the experiment and building the model
+ 4. Checking the build against the official answer (step 1)
+ 5. Understanding the setup: an ice shelf inside an ocean model
+ 6. The baseline run and the "ice pump" (step 2)
+ 7. Keeping the ocean warm, attempt 1: a mistake worth learning from
+ 8. Keeping the ocean warm, attempt 2: an open-ocean zone (step 3)
+ 9. How much do the melt settings matter? (step 4)
+10. Checking the bookkeeping and summing up (step 5)
+11. Does a finer grid change the answer? (step 6)
+12. A standard test case: ISOMIP+ Ocean0 (step 7)
+13. The big picture
+14. If I did it again: a checklist
+15. Mistakes I made and how I caught them
+16. Words to know (glossary)
+
+
+========================================================================
+0. THE IDEA IN PLAIN WORDS
+========================================================================
+
+Around Antarctica, the ice sheet flows off the land into the sea and
+floats. The floating part is an "ice shelf": a slab of ice hundreds of
+metres thick, with ocean water underneath it in a big hidden space called
+the "cavity". The place where the ice first lifts off the seafloor is the
+"grounding line".
+
+Ice shelves act like a cork in a bottle: they hold back the ice on land
+behind them. If they get thinner, the land ice flows faster into the sea
+and sea level rises. Most ice-shelf thinning today comes from the ocean
+melting them FROM BELOW, not from warm air above.
+
+The question of this project: how fast does the ocean melt an ice shelf,
+and how does that depend on
+  - how warm the ocean is (the main question),
+  - the uncertain numbers inside the melt formula,
+  - and the model's grid size?
+
+A key number: "thermal forcing" = how many degrees the water is above its
+freezing point. Earlier studies (Holland, Jenkins and Holland 2008) found
+that melt grows FASTER than in simple proportion to thermal forcing:
+double the thermal forcing and the melt more than doubles. In my project
+14 toy model I simply assumed melt = constant x (thermal forcing)^2. This
+project tests that with a real 3D ocean model.
+
+Spoiler: the melt grew roughly like thermal forcing to the power 1.5 in
+my setup, but WHERE the warm water goes matters as much as how warm it is.
+
+
+========================================================================
+1. WHAT YOU NEED BEFORE YOU START
+========================================================================
+
+My computer:
+  - Apple MacBook with an M1 chip (8 cores), 16 GB of memory.
+  - Each model run uses ONE core. I ran up to 4 at the same time.
+  - Disk: the whole project used about 3.4 GB outside the repository.
+
+Software that was already installed from project 15 (through Homebrew):
+  - gfortran (GNU Fortran 16.2.0)  - the compiler that turns MITgcm's
+                                     Fortran code into a program.
+  - make                           - runs the build steps in order.
+  - netCDF and netCDF-Fortran      - data-file libraries. This
+                                     experiment includes the netCDF
+                                     output package, so the build needs
+                                     them.
+
+How to check (in a terminal):
+    which gfortran make nc-config nf-config
+    gfortran --version
+If something is missing:
+    brew install gcc netcdf netcdf-fortran
+
+Python (Miniforge) with numpy, matplotlib, nbformat and JupyterLab, and
+the Jupyter kernel called "ocean". These were already in my portfolio's
+environment.
+
+A rule I kept all the way through: the model code and ALL model runs live
+OUTSIDE my git repository, because runs are big.
+  - model source code:   ~/models/MITgcm              (never changed)
+  - my copy of the
+    experiment files:    ~/mitgcm_runs/isomip/source_copy/
+  - all builds and runs: ~/mitgcm_runs/isomip/<name>/
+  - in the repository:   only scripts, the small settings files I
+                         changed, notebooks, figures and small tables.
+
+
+========================================================================
+2. WHAT I INSTALLED AND DOWNLOADED
+========================================================================
+
+Nothing new had to be installed for this project. Everything came from
+project 15:
+
+  2.1 MITgcm itself (done in project 15). MITgcm is not installed like an
+      app; you download its source code and build a program for each
+      experiment:
+          mkdir -p ~/models && cd ~/models
+          git clone --depth 1 --branch checkpoint69q https://github.com/MITgcm/MITgcm.git
+      Release "checkpoint69q", commit 853761d8, 533 MB.
+      --depth 1 downloads only this release, not the whole history.
+
+  2.2 MITgcmutils (done in project 15), MITgcm's own Python reader for
+      its output files. It comes inside the MITgcm download, so it is
+      installed from there:
+          ~/miniforge3/bin/python -m pip install --no-deps ~/models/MITgcm/utils/python/MITgcmutils
+      Then, in Python:
+          from MITgcmutils import rdmds
+          melt = rdmds("shelfice_monthly", 17520)   # file prefix, step number
+
+Two downloads were new, both for step 7 (ISOMIP+), both stored outside
+the repository:
+
+  2.3 The ISOMIP+ paper (Asay-Davis et al. 2016, Geoscientific Model
+      Development 9, 2471-2497). It is the "rule book" for the standard
+      test case. It is free:
+          curl -sL -o asaydavis2016.pdf https://gmd.copernicus.org/articles/9/2471/2016/gmd-9-2471-2016.pdf
+      I could not turn the PDF into text with the usual tool (poppler is
+      not installed, and I did not install it), so I wrote a small Python
+      script using only the built-in zlib module to pull the text out.
+
+  2.4 The ISOMIP+ ice-shelf shape (a netCDF file, 1.9 MB), from the GFZ
+      data archive (doi 10.5880/PIK.2016.002):
+          mkdir -p ~/mitgcm_runs/isomip/isomip_plus_data
+          cd ~/mitgcm_runs/isomip/isomip_plus_data
+          curl -sL -o Ocean1_input_geom_v1.01.nc \
+              "https://datapub.gfz-potsdam.de/download/10.5880.PIK.2016.002/Ocean1_input_geom_v1.01.nc"
+      I wrote down its fingerprint (sha256 starting 765735a9) so I can
+      tell later whether I have exactly the same file.
+
+
+========================================================================
+3. GETTING THE EXPERIMENT AND BUILDING THE MODEL
+========================================================================
+
+MITgcm comes with many ready-made test experiments in
+~/models/MITgcm/verification/. The ice-shelf one is "isomip". It has:
+  code/      compile-time files: grid size (SIZE.h), the list of
+             packages to include (packages.conf), and a few changed
+             code files
+  input/     run-time files: the "data" settings files, the seafloor
+             (bathy.box), the ice shape (icetopo.exp1) and the weight of
+             the ice (phi0surf.exp1.jmd95z)
+  results/   output.txt from the official reference run
+
+Step 3.1 - Copy the experiment so the original stays untouched:
+    mkdir -p ~/mitgcm_runs/isomip/source_copy
+    cp -R ~/models/MITgcm/verification/isomip/{code,input,results} ~/mitgcm_runs/isomip/source_copy/
+
+Step 3.2 - Copy my two helper scripts from project 15 into
+  project_16_mitgcm_ice_shelf_cavity/scripts/:
+    build.sh          builds the program
+    run_experiment.sh makes a run folder, links the input files, copies
+                      my changed files on top, runs the model, and then
+                      checks the output
+
+Step 3.3 - Build. Building takes three commands (inside build.sh):
+    genmake2     looks at the computer and the experiment, writes a
+                 "Makefile" (the build recipe). It needs a file that
+                 describes the compiler: darwin_arm64_gfortran
+                 ("darwin" = macOS, "arm64" = Apple chip; check with
+                 uname -m).
+    make depend  works out which code files depend on which.
+    make         compiles everything into ONE program: "mitgcmuv".
+
+  One known trap from project 15: the last step failed with
+      ld: library 'netcdf' not found
+  The fix, already inside build.sh, is one line before building:
+      export LIBRARY_PATH=/opt/homebrew/lib:$LIBRARY_PATH
+  (it tells the compiler where Homebrew keeps the netCDF library).
+
+  I built two versions:
+    bash scripts/build.sh ~/mitgcm_runs/isomip/source_copy/code ~/mitgcm_runs/isomip/build_reference_ieee ieee
+    bash scripts/build.sh ~/mitgcm_runs/isomip/source_copy/code ~/mitgcm_runs/isomip/build_reference_fast fast
+  "ieee" = careful arithmetic, slow, best for comparing with the
+  official answer. "fast" = optimized, for the long runs.
+  Both built first time.
+
+  Later I needed other builds, because some changes are only possible at
+  compile time. Each one = the original code folder + a small folder of
+  my changed files, given as the 4th argument of build.sh:
+    build_safe_fast     + experiments/safety_code   (NaN-safe check, 3.4)
+    build_rbcs_fast     + experiments/rbcs_code     (adds the restoring
+                                                     package, section 7)
+    build_fine_fast     + experiments/fine_code     (a grid twice as fine,
+                                                     section 11)
+    build_isoplus_fast  + experiments/isomip_plus_code (ISOMIP+ grid and
+                                                     melt formula, sec. 12)
+
+Step 3.4 - A safety change I carry over from project 15. In project 15 one
+  run "blew up" (its numbers became NaN, "not a number") but still printed
+  "ended normally", because the model's built-in check did not notice NaN.
+  So every build from step 2 on includes a corrected copy of the check
+  (mon_solution.F; the test is written so that NaN fails it), the monitor
+  runs every 30 model days (monitorFreq = 2592000 seconds), and
+  run_experiment.sh refuses to call a run good if "NaN" appears anywhere
+  in the model's own output lines.
+
+
+========================================================================
+4. CHECKING THE BUILD AGAINST THE OFFICIAL ANSWER (STEP 1)
+========================================================================
+
+Why: before changing anything, I must know my build gives the right
+answer. Otherwise I could never tell a real result from a computer
+problem.
+
+How: run the experiment's short test exactly as provided (20 time steps
+of 30 minutes = 10 model hours):
+    bash scripts/run_experiment.sh ~/mitgcm_runs/isomip/build_reference_ieee \
+        ~/mitgcm_runs/isomip/source_copy/input ~/mitgcm_runs/isomip/reference_test_ieee
+and compare its printed "%MON" (monitor) lines with results/output.txt,
+counting how many digits agree (notebooks/01_build_and_verify.ipynb).
+
+A trap: the model starts perfectly still with perfectly uniform water, so
+in the first steps many monitored numbers are pure rounding noise (for
+example a temperature spread of 8e-14 in a field that should be exactly
+uniform). Comparing noise is meaningless, so I compared monitor times
+10-20, after the water had started moving, and left out the mean sea
+level (which is held at zero; its values are noise of about 1e-21).
+
+Result (50 quantities):
+  - IEEE build: worst agreement 9.6 digits, typical 13.4 digits.
+  - fast build: worst 7.5 digits, typical 10.8 digits.
+Agreement to 7.5 or more digits means my build solves the same equations
+the same way.
+
+Timing: one model month took 39.3 s with the fast build, so about 8
+minutes per model year. The IEEE build was 10.5 times slower. So all long
+runs used the fast build.
+
+
+========================================================================
+5. UNDERSTANDING THE SETUP: AN ICE SHELF INSIDE AN OCEAN MODEL
+========================================================================
+
+5.1 The box
+  - A piece of ocean from 80 S to 70 S and 15 degrees of longitude wide,
+    on a grid of 50 x 100 points (0.3 degrees east-west, 0.1 degrees
+    north-south; cells about 6-11 km x 11 km).
+  - 30 layers, each 30 m thick; flat seafloor at 900 m.
+  - The ice shelf covers EVERYTHING. Its base is 700 m deep at the
+    southern wall (the grounding line side), rises to 200 m by 76 S, and
+    stays at 200 m to the north.
+  - Walls on the first row and first column. Because the grid wraps
+    around, these walls also close the other sides: a sealed box.
+  - The water starts still, at -1.9 C and salinity 34.4 g/kg everywhere.
+  - No wind, no surface, no rivers. The ONLY thing that can move the water
+    is melting and freezing at the ice base.
+
+5.2 How an ocean model holds an ice shelf
+  MITgcm normally has fixed horizontal layers starting at the sea surface.
+  The ice-shelf package (pkg/shelfice) pushes a "lid" down into them:
+  - Cells above the ice base are "dry" (they are ice).
+  - The first wet cell under the ice acts like the sea surface: the heat,
+    salt and fresh water from melting go in there.
+  - The ice base usually falls between two layers, so that top cell is
+    only partly open ("partial cell"). The smooth ice base becomes a
+    staircase.
+  - The ice's weight presses on the water. A file gives this extra
+    pressure ("load anomaly"), so the floating ice is in balance.
+  - IMPORTANT: the ice never changes shape. Melt is computed as a flux,
+    but the ice does not get thinner in the model.
+
+5.3 The melt formula: the "three equations"
+  At the ice base, three things must be true at once:
+    1. Heat: heat arriving from the ocean = heat used to melt ice
+       + heat conducted up into the cold ice.
+    2. Salt: salt arriving from the ocean = salt needed to make the fresh
+       meltwater as salty as the water at the ice base.
+    3. Freezing point: the water touching the ice is exactly at its
+       freezing temperature, which depends on salinity and pressure:
+         T_freeze = -0.0575 x S + 0.0901 - 0.000761 x pressure(dbar)
+  Unknowns: melt rate, temperature at the ice base, salinity at the ice
+  base. The model solves this every time step at every point.
+  How fast heat and salt cross the thin water layer touching the ice is
+  set by two "transfer coefficients":
+         gamma_T = 0.0001 m/s for heat (default),
+         gamma_S = 0.00505 x gamma_T for salt (salt moves ~200 times
+         more slowly than heat in water).
+  The test as provided uses a simpler ISOMIP formula. From step 2 on I
+  switched to the three-equation model (in data.shelfice:
+  useISOMIPTD = .FALSE.), because it is what modern models use.
+
+5.4 Why cold water can melt ice deep down
+  Pressure lowers the freezing point: about 0.75 C colder per 1000 m.
+  At salinity 34.4: -1.89 C at the surface, -2.04 C at 200 m,
+  -2.42 C at 694 m. So the -1.9 C water is BELOW freezing at the surface
+  but 0.5 C ABOVE freezing at 700 m. It can melt the deep ice.
+
+5.5 Units I used
+  The model reports melt as a fresh-water flux, SHIfwFlx, in kg per m^2
+  per second, positive UPWARD, so melting is a negative number.
+      melt (m of ice per year) = -SHIfwFlx / 917 x 31 536 000
+  917 kg/m^3 = ice density; 31 536 000 s = a 365-day year (this setup has
+  no calendar). Example: -0.00001 kg/m^2/s = 0.344 m of ice per year.
+  (ISOMIP+ in step 7 uses metres of WATER per year and a 365.2422-day
+  year, because its rule book says so.)
+
+
+========================================================================
+6. THE BASELINE RUN AND THE "ICE PUMP" (STEP 2)
+========================================================================
+
+What I changed (experiments/baseline/):
+  - data.shelfice: useISOMIPTD = .FALSE.   (three-equation melt)
+  - data:          nTimeSteps = 87600      (5 years of 30-minute steps)
+                   globalFiles = .TRUE.    (one output file per field)
+                   pChkptFreq = 31536000.  (restart file every year)
+                   monitorFreq = 2592000.  (check every 30 days)
+  - data.pkg:      useDiagnostics = .TRUE. (time-averaged output)
+  - data.diagnostics: 30-day means of the melt flux (SHIfwFlx), heat flux,
+                   transfer coefficient and friction velocity; yearly
+                   means of 3D temperature, salinity and velocity.
+
+First a 60-day test (experiments/baseline_test/) to check the output
+files and the sign of the melt. Then the 5-year run (43 minutes, 108 MB):
+    bash scripts/run_experiment.sh ~/mitgcm_runs/isomip/build_safe_fast \
+        ~/mitgcm_runs/isomip/source_copy/input ~/mitgcm_runs/isomip/baseline experiments/baseline/input
+
+What I found (notebooks/02_baseline_cavity.ipynb):
+  - The mean melt fell fast, then slowly: 0.92 m/yr in the first month,
+    0.084 after 1 year, 0.037 after 4.9 years. It was still falling 10.5%
+    per year at the end. A sealed box has no heat supply: every bit of
+    melting uses up the water's heat, so the melt can never settle.
+  - Melting at the deep end (0.87 m/yr where the ice base is 681 m deep),
+    REFREEZING higher up (-0.16 m/yr at the 200 m ice next to the slope).
+  - A layer of cold, fresh meltwater along the ice base, down to -2.43 C
+    and 34.19 g/kg.
+  - One overturning loop of 160 mSv (thousandths of a Sverdrup; 1 Sv =
+    1 million m^3 per second): water goes south at depth and north up
+    along the ice base.
+
+The ice pump (the main idea of step 2):
+  1. Deep water is above its local freezing point (pressure!), so it
+     melts the deep ice.
+  2. The meltwater is fresh, so the mixture is light. It rises along the
+     sloping ice base as a plume.
+  3. As it rises, the pressure drops and its freezing point goes UP. The
+     water, cooled at depth, is now colder than its new freezing point:
+     "supercooled".
+  4. It refreezes onto the ice higher up ("marine ice").
+  Ice is moved from deep to shallow, driven only by how pressure changes
+  the freezing point.
+
+Lesson: to study warm water, I must keep adding heat somewhere.
+
+
+========================================================================
+7. KEEPING THE OCEAN WARM, ATTEMPT 1: A MISTAKE WORTH LEARNING FROM
+========================================================================
+
+The tool: MITgcm's "rbcs" package (relaxation boundary conditions). In
+cells where a "mask" is above zero it nudges temperature and salinity
+toward a target:
+    change per second = -mask x (T - T_target) / tau
+tau is the nudging time. Adding the package means a new build
+(experiments/rbcs_code/packages.conf has one extra line, "rbcs").
+
+A trap: rbcs uses mask number 1 for temperature and mask number 2 for
+salinity. If you only give mask 1, salinity is silently NOT nudged (the
+model just prints a warning). So data.rbcs sets both:
+    relaxMaskFile(1)='rbcs_mask.bin',
+    relaxMaskFile(2)='rbcs_mask.bin',
+
+Attempt 1 (experiments/rbcs_*): leave the ice everywhere and nudge the
+northernmost 1 degree (north of 71 S, under the flat 200 m ice) over 10
+days, toward -1.9, -1.4, -0.9 or +0.1 C, for 5 years.
+
+Why it failed (notebook 03, Part B1):
+  - The nudged water sat right against the ice, so it melted the ice
+    above it: 0.55 to 9.5 m/yr there, against 0.05 to 1.2 m/yr in the
+    rest of the cavity. My forcing was making most of the melt.
+  - The warmth never reached the deep cavity: in the coldest case, 1189
+    columns south of 74.55 S melted exactly as in the sealed box.
+  - The zone did not even reach its target (about -0.07 C instead of
+    +0.1 C), because the melting above it kept cooling it.
+  A power-law fit gave an exponent of 1.92, but it was measuring my
+  forcing, not the ocean. I kept these runs only as a lesson.
+
+
+========================================================================
+8. KEEPING THE OCEAN WARM, ATTEMPT 2: AN OPEN-OCEAN ZONE (STEP 3)
+========================================================================
+
+The fix (the same idea ISOMIP+ uses): nudge in OPEN ocean, with no ice
+above it.
+
+  1. Remove the ice north of 71 S (notebook 03, Part A): ice draft = 0 and
+     ice weight = 0 there. I first checked that the weight file depends
+     only on the ice draft (cells with the same draft have exactly the
+     same weight), so 0 weight is right where the ice is gone. New files:
+     experiments/open_geometry/icetopo_open_north.bin and
+     phi0surf_open_north.bin. The ice shelf now ends in a 200 m ice
+     cliff ("ice front") at 71 S, with open water north of it.
+  2. The nudging mask is 0 at the ice front and rises to 1 at the
+     northern wall, at all depths, only in the open water.
+  3. tau = 1 day (strong), so the open water stays at its target.
+  4. Four cases with targets -1.9, -1.4, -0.9 and +0.1 C (the baseline
+     plus 0.5, 1 and 2 C). Salinity target 34.4 everywhere.
+  5. Each runs 10 model years from the cold start. In data.rbcs:
+         tauRelaxT=86400.,  tauRelaxS=86400.,
+         relaxMaskFile(1)='rbcs_mask_open.bin',
+         relaxMaskFile(2)='rbcs_mask_open.bin',
+         relaxTFile='theta_rbcs_p10.bin',   (for the -0.9 C case)
+         relaxSFile='salt_34p4.bin',
+  6. All four at once, one core each (2 hours 54 minutes):
+         bash scripts/run_open_cases.sh ~/mitgcm_runs/isomip/inputs_rbcs base p05 p10 p20
+  A 30-day test first: zero melt in the open water, sea level within
+  4.5 cm, largest CFL number 0.08 (CFL = how far water moves in one step
+  compared with a grid cell; it must stay well below 1).
+
+Thermal forcing: far-field temperature minus the freezing point at the
+deepest ice (694 m, -2.421 C): 0.521, 1.021, 1.521 and 2.521 C.
+
+What I found:
+  - "Steady" means the melt changes by less than 2% from one year to the
+    next. After 10 years the two warm cases were steady; the two cold
+    ones were still slowly falling. So I continued those two for 10 more
+    years from their restart ("pickup") files:
+      experiments/open_base_ext and open_p05_ext; the only change in
+      their "data" file is   nIter0 = 175200,   ("start at step 175200",
+      the end of year 10). Run with:
+      bash scripts/run_extension.sh ~/mitgcm_runs/isomip/inputs_rbcs base_ext
+    The -1.4 C case settled in its second decade. The -1.9 C case was
+    STILL falling after 20 years (by 3.7% per year), so its number is an
+    upper limit.
+  - Melt (m of ice per year): 0.025, 0.104, 0.207 and 0.415 for far
+    fields of -1.9, -1.4, -0.9 and +0.1 C.
+  - Best fit through the three steady cases: melt = 0.104 x TF^1.52.
+    With all four: TF^1.79. Both are between 1 (simple proportion) and 2
+    (my project 14 assumption).
+  - Why above 1: meltwater is light, so more melt drives a stronger flow
+    out of the cavity, and warm water flows in to replace it. The inflow
+    across the ice front was 11, 79, 116 and 268 mSv, growing roughly
+    like TF^2. More melt pulls in more heat.
+  - The surprise: about 30% of the melt comes from the single row of ice
+    right behind the ice front (up to 8.8 m/yr), while the DEEP ice (near
+    the grounding line) barely responds to the warming (0.11 to 0.14
+    m/yr in every case). The deep cavity stayed at about -2.0 C even
+    when the open ocean was +0.1 C.
+  - Why: my warm water has the same salinity as the cavity water, so
+    warming it makes it LIGHTER. At 700 m depth the +2 C water was 0.08
+    kg/m^3 lighter than the deep cavity water, so it could not sink to
+    the grounding line; it flowed in under the flat ice instead. (The
+    -1.9 and -1.4 C water was still slightly denser, and there the old
+    ice-pump circulation survived.) In the real Antarctic the warm water
+    (Circumpolar Deep Water) is also saltier and therefore heavier, so it
+    DOES reach the grounding line. This is a limitation of my simple
+    setup, and ISOMIP+ (step 7) uses a warm, salty deep layer instead.
+
+
+========================================================================
+9. HOW MUCH DO THE MELT SETTINGS MATTER? (STEP 4)
+========================================================================
+
+The question: the melt formula has two "transfer coefficients" (gamma_T
+for heat, gamma_S for salt) that nobody knows well. If I get them wrong
+by a factor of 2, how wrong is my melt rate?
+
+The reference: the -0.9 C case from step 3 (open_p10), because it had
+settled. (I first started these runs from the -1.9 C case, then stopped
+them after 8 minutes when I saw that case had not settled, and restarted.
+A comparison is only fair against a reference that is not still
+changing.)
+
+Three new runs, each a copy of open_p10 with ONE line changed in
+data.shelfice:
+  open_g05:   SHELFICEheatTransCoeff = 0.5E-4,   (gamma_T halved)
+  open_g20:   SHELFICEheatTransCoeff = 2.0E-4,   (gamma_T doubled)
+              (gamma_S follows automatically: it is 0.00505 x gamma_T)
+  open_frict: SHELFICEuseGammaFrict = .TRUE.,    (coefficients depend on
+              the current speed next to the ice, Holland and Jenkins 1999)
+              SHELFICEDragQuadratic = 2.5E-3,    (turning the option on
+              would quietly change the friction of the ice base too; this
+              line keeps it the same as in the other runs, so only ONE
+              thing changes)
+  Run all three at once (2 h 56 min):
+      bash scripts/run_open_cases.sh ~/mitgcm_runs/isomip/inputs_rbcs g05 g20 frict
+
+What I found (mean of year 10, m of ice per year):
+  gamma_T halved      0.180   (0.87 x the reference)
+  gamma_T default     0.207
+  gamma_T doubled     0.234   (1.13 x)
+  speed-dependent     0.059   (0.28 x)
+
+  - A factor of 4 in gamma_T changed the melt by only about 30%. Why? A
+    bigger gamma_T takes heat out of the water touching the ice faster,
+    so that water gets colder and closer to freezing, which slows the
+    melting again. The real limit is how fast the circulation brings
+    warm water INTO the cavity, not how fast heat crosses the thin layer.
+  - Making the coefficients depend on the current speed made a much
+    bigger difference: 3.5 times less melt. The currents next to the ice
+    in this cavity are very slow (about 1 mm/s), so the coefficient
+    became about 100 times smaller than the constant default
+    (about 0.000001 m/s instead of 0.0001).
+  - A detail I found in the code: the model never lets the speed count as
+    less than 1 mm/s. A quarter of the ice sat exactly at that minimum
+    all year. So that result partly depends on a choice made by the code
+    writers, not on physics.
+
+
+========================================================================
+10. CHECKING THE BOOKKEEPING AND SUMMING UP (STEP 5)
+========================================================================
+
+10.1 The salt check. Melting adds fresh water, so the ocean's salt
+  content must drop by an amount I can predict from the melt the model
+  reports. If it does not, something is wrong in the model or in my
+  analysis.
+  - I used the sealed baseline (step 2): nothing else can change its
+    salt.
+  - In this setup the meltwater is not added as extra volume; instead the
+    model removes salt ("virtual salt flux"). The salt removed per second
+    = (fresh-water flux) x (salinity right at the ice base) / 1030.
+  - Result: after 1800 days the mean salinity had dropped by 0.018765
+    g/kg; my prediction from the melt was 0.018780. They agree to 0.08%.
+  - My first try was 3.7% off, because I used the salinity of the water
+    just below the ice instead of AT the ice base. I had assumed the two
+    are almost the same, but the meltwater makes the ice base much
+    fresher (by 1.8 g/kg in the first month). I worked out the ice-base
+    salinity from the model's own salt balance and the check closed.
+
+10.2 The summary (data/summary_table.csv), all compared with the
+  -0.9 C case:
+    ocean 1 C warmer (+0.1 C)          2.00 x the melt
+    ocean 0.5 C colder (-1.4 C)        0.50 x
+    gamma_T doubled                    1.13 x
+    gamma_T halved                     0.87 x
+    speed-dependent coefficients       0.28 x
+    grid twice as fine (year 2)        1.09 x
+  The ocean temperature is the biggest control; the FORM of the transfer
+  coefficient comes second; its exact size and the grid matter least.
+
+10.3 Back to project 14. There I assumed melt = 10 x T^2 (m/yr, T in C
+  above freezing).
+  - The exponent here is about 1.5 (steady cases), not 2.
+  - The size: melt / TF^2 is only 0.07-0.10 in the isomip box (a long,
+    shallow, flat ice shelf where little melts) and 2.7 for the deep ice
+    in ISOMIP+. So the right "m" depends on the geometry by a factor of
+    30-40, and my value of 10 was too big for both.
+
+
+========================================================================
+11. DOES A FINER GRID CHANGE THE ANSWER? (STEP 6)
+========================================================================
+
+The question: is my grid fine enough? If I make the cells smaller and
+the answer changes a lot, the coarse answer cannot be trusted.
+
+What I did: repeated the -0.9 C case on a grid with half the spacing in
+both directions (0.15 x 0.05 degrees, 100 x 200 points, 4 times as many
+columns). Everything else the same.
+  - The grid size is fixed when the program is compiled, so this needs
+    its own build: experiments/fine_code/SIZE.h, build_fine_fast.
+  - experiments/fine_p10/input/data:
+        delX = 100*0.15,   delY = 200*0.05,   (the new cell sizes)
+        bathyFile = 'bathy_fine.bin',
+        nTimeSteps = 35040,   (2 years; the fine grid is 4 times slower)
+  - Is the same 30-minute time step still safe? The horizontal friction
+    term is the one that can go unstable on small cells. Its "stability
+    number" Ah x dt x (1/dx^2 + 1/dy^2) is 0.163 on the smallest cells,
+    below the limit of 0.25, so yes.
+  - The input files (notebook 06, Part A): the ice shape follows a simple
+    rule (it rises 125 m per degree from -700 m at 80 S and stops at
+    -200 m), so I can draw it on any grid. I checked the rule against the
+    original file first. My first version had a bug (np.maximum instead of
+    np.minimum) and the check caught it immediately with a 744 m error.
+    After the fix the rule matched to 0.000000000002 m.
+  - Run (2 h 12 min):
+        bash scripts/run_fine_case.sh ~/mitgcm_runs/isomip/inputs_fine fine_p10
+
+What I found (mean melt, m of ice per year):
+            coarse   fine    fine/coarse
+  year 1    0.347    0.368   1.06
+  year 2    0.239    0.259   1.09
+  - The cavity interior hardly changes (deep ice: 1.6% more).
+  - The strip right behind the ice front melts 20% more on the fine grid
+    (5.55 against 4.64 m/yr), because the narrow band where warm water
+    first touches the ice is better resolved.
+  So: the interior is close to "converged" (no longer changing with
+  resolution), but the ice front is not. My step 3 melt rates would
+  probably be about 10% higher on a finer grid.
+
+
+========================================================================
+12. A STANDARD TEST CASE: ISOMIP+ OCEAN0 (STEP 7)
+========================================================================
+
+Why: ISOMIP+ is an international comparison where many ice-shelf models
+run exactly the same setup. Setting it up myself tests whether I can
+follow a published "recipe" and get the expected answer.
+
+The recipe (Asay-Davis et al. 2016, "Ocean0"):
+  - a realistic ice-shelf shape from an ice-sheet model (the file
+    downloaded in 2.4), in a channel 320-800 km long and 80 km wide,
+  - water that is WARMER AND SALTIER with depth (-1.9 C, 33.8 g/kg at the
+    top; +1.0 C, 34.7 g/kg at 720 m), so the warm water is heavy,
+  - restoring to that profile at the far end (790-800 km),
+  - a melt formula where gamma = Gamma_T x (friction velocity), with a
+    fixed extra "tidal" speed of 1 cm/s,
+  - and the rule: tune Gamma_T until the mean melt where the ice base is
+    deeper than 300 m is 30 +/- 2 m per year of water.
+
+What I set up (everything new, written from the paper):
+  - A 4 km grid (121 x 21 points, 36 layers of 20 m). The recipe asks
+    for 2 km; 4 km keeps each run near an hour on my laptop.
+  - Compile time (experiments/isomip_plus_code/): grid size, the rbcs
+    package, and a COPY of MITgcm's melt code (shelfice_thermodynamics.F)
+    changed to the ISOMIP+ formula. MITgcm's own speed-dependent formula
+    is a different one (Holland and Jenkins 1999). Every changed line has
+    a comment. The original file in ~/models/MITgcm is untouched.
+  - Run time (experiments/isoplus_common/data): a simple straight-line
+    equation of state, the Earth's rotation at 75 S, the mixing numbers
+    from the paper's Table 4, and the warm profile as the starting state
+    and restoring target.
+  - The input files (notebook 07, Part A): average the 1 km geometry
+    onto 4 km cells; land where more than half a cell is grounded; ice
+    thinner than 100 m removed ("calved", 81 cells); cells with less than
+    40 m of water under the ice made land (50 cells). Result: 665 ice
+    cells, 157 of them deeper than 300 m.
+
+Problems on the way:
+  - The paper's formula for the seafloor does not match the official
+    file everywhere (up to about 100 m off in places). I used the file
+    and wrote this down.
+  - "Cannot mix z, p and r": I had written delR where this setup needs
+    delZ (layer thicknesses in metres). Changed one word.
+  - The first test blew up within 10 days. Very thin cells under the ice
+    let water move further than a whole cell in one time step (vertical
+    CFL number 1.38). Fix: no cell less than 20% open (hFacMin = 0.2
+    instead of 0.1) and a 5-minute time step instead of 10 minutes.
+  - My own comment containing the word "NaN" was copied into the model's
+    log and would have tripped my NaN alarm. Fixed the comment and taught
+    the check to skip copied input lines.
+
+Calibration: four 1-year runs, one per core (about 65 min each). The
+  0.1 run went first, on its own, while other runs were still using the
+  other cores; then the other three together:
+      bash scripts/run_isoplus_cases.sh isoplus_g100
+      bash scripts/run_isoplus_cases.sh isoplus_g025 isoplus_g050 isoplus_g200
+  Deep melt (m of water per year): Gamma_T 0.025 -> 15.7, 0.05 -> 31.1,
+  0.1 -> 51.0, 0.2 -> 67.5. The curve bends: at small Gamma_T the melt is
+  almost proportional to it, at large Gamma_T the ocean cannot supply
+  heat fast enough (the same lesson as step 4). Interpolating between
+  0.025 and 0.05 gives Gamma_T = 0.0483.
+
+The final run: experiments/isoplus_final/ (Gamma_T = 0.0483, 2 years,
+1 h 32 min). Deep melt over the last 6 months: 29.53 m/yr, inside the
+target band of 28-32, and unchanged from the 6 months before. Whole
+shelf: 10.79 m/yr. Strongest melting (68 m/yr) at the deep grounding
+line: here the heavy warm water DOES reach the deepest ice, unlike in my
+step 3 runs.
+
+Comparison: the paper suggests starting with Gamma_T = 0.022, and the
+POP2x model needed about 0.11. I needed 0.048: different models need
+different Gamma_T for the same melt, which is exactly why ISOMIP+ asks
+everyone to calibrate. Notebook 07 lists all 13 ways my setup differs
+from the recipe.
+
+========================================================================
+13. THE BIG PICTURE
+========================================================================
+
+What the whole project says, in a few lines:
+  1. Even with no forcing at all, an ice shelf drives its own
+     circulation: the ice pump (deep melting, rising meltwater,
+     refreezing higher up), because pressure lowers the freezing point.
+  2. A warmer ocean melts more ice, faster than in simple proportion
+     (exponent about 1.5 here), because meltwater pulls in more warm
+     water. My project 14 assumption of an exponent of 2 had the right
+     idea but was a bit too steep for this model.
+  3. WHERE the warm water goes matters as much as how warm it is. Warm
+     but light water stays near the ice front; warm and salty (heavy)
+     water reaches the deep grounding line (ISOMIP+). In the real
+     Antarctic, it is the deep grounding-line melting that matters most
+     for the ice sheet.
+  4. The melt formula's coefficients are uncertain. Their exact size
+     matters less than I expected (the ocean limits the heat supply),
+     but their FORM (constant or speed-dependent) matters a lot, and so
+     does how the model treats very slow currents.
+  5. Standard test cases like ISOMIP+ handle this uncertainty by tuning
+     the coefficient to a target melt. Different models need different
+     values (0.048 for mine, about 0.11 for POP2x).
+
+What it does NOT say: anything about real ice shelves directly. The
+geometry is idealized, the ice never changes shape, and there are no
+tides or sea ice. The next steps would be to let the ice respond
+(coupling to an ice-sheet model) and to look for tipping points in the
+coupled ice-ocean system, as in project 14.
+
+
+========================================================================
+14. IF I DID IT AGAIN: A CHECKLIST
+========================================================================
+
+  [ ] Check the tools: gfortran, make, netCDF, Python with MITgcmutils.
+  [ ] Clone MITgcm at a fixed release; write down the commit.
+  [ ] Copy the experiment; never edit the original.
+  [ ] Build an IEEE version and compare with the reference output. Skip
+      the first steps and quantities that are pure rounding noise.
+  [ ] Build a fast version for long runs; time one model month.
+  [ ] Read the package's defaults in its *_readparms.F before trusting
+      a setting you did not set.
+  [ ] Include the NaN-safe check and monitor every 30 days. Never trust
+      "ended normally" alone.
+  [ ] Run a short test (days to a month) before every long run; check
+      the output files, the signs, and the CFL numbers.
+  [ ] Before adding forcing, think about WHERE it acts. Never restore
+      under the ice.
+  [ ] Decide what "steady" means before looking at the answer, and test
+      every run against it. Extend the runs that fail.
+  [ ] Compare sensitivity runs against a reference that is steady.
+  [ ] Check the bookkeeping (salt budget) with the right formula.
+  [ ] Look at maps, not only area means: they show where the change
+      happens.
+  [ ] For a standard test case, list every deviation as you go.
+  [ ] Keep runs outside the repository; commit only small files, and
+      only after review.
+
+
+========================================================================
+15. MISTAKES I MADE AND HOW I CAUGHT THEM
+========================================================================
+
+  1. Comparing rounding noise. The first comparison with the reference
+     looked poor, because the first steps are pure noise in a perfectly
+     still, uniform ocean. Caught by looking at the actual numbers
+     (8e-14 in a field that should be uniform). Fix: compare monitor
+     times 10-20.
+  2. One output file per tile. The first baseline test wrote many small
+     files per field. Fix: globalFiles = .TRUE.
+  3. Restoring under the ice (step 3, attempt 1). It melted the ice above
+     the restoring zone and never reached the deep cavity. Caught by
+     splitting the melt into the zone and the rest. Fix: an open-ocean
+     zone with no ice above it.
+  4. Overwriting a file. I wrote the new restoring mask with the same
+     name as the old one, which would have made the first design
+     impossible to reproduce. Fix: a new name (rbcs_mask_open.bin), and I
+     rebuilt the old file; its checksum matches the original.
+  5. Comments in data.shelfice that did not start in the first column
+     (" #"). Moved them to column 1, where the model's reader expects
+     comment lines.
+  6. The fine-grid ice shape: np.maximum instead of np.minimum. Caught
+     by checking the rule against the original file (744 m error).
+  7. "Cannot mix z, p and r" (ISOMIP+): delR instead of delZ.
+  8. ISOMIP+ blew up within 10 days: thin partial cells and a too-long
+     time step. Fix: hFacMin 0.2 and a 300 s step.
+  9. My comment containing "NaN" would have tripped my own NaN alarm,
+     because the model copies the input files into its log. Fix: change
+     the comment and skip copied lines in the check.
+ 10. A misleading circulation number. In step 3 I first reported the
+     "largest overturning", which went 136, 118, 77, 163 mSv: not a
+     trend at all. Plotting it showed the circulation changes pattern
+     (a new cell of the opposite sign), so the largest value was picking
+     different cells. Fix: measure the inflow across the ice front.
+ 11. A reference that was not steady. I started step 4 against the
+     -1.9 C case, then saw it was still drifting. Stopped after 8
+     minutes and restarted against the -0.9 C case.
+ 12. The salt check was 3.7% off with the wrong salinity (section 10).
+ 13. A plotting error: the ISOMIP+ time axis used a 600 s step instead of
+     300 s and showed 4 years instead of 2. Caught by comparing the axis
+     with the run length.
+ 14. Wrong escape characters in my notebook-building scripts ("\n"
+     turned into a real line break) twice; caught because the notebook
+     would not run.
+ 15. A Python helper assumed the coarse grid size and failed on the fine
+     grid. Fix: take the size from the grid files.
+
+
+========================================================================
+16. WORDS TO KNOW (GLOSSARY)
+========================================================================
+
+  ice shelf        the floating part of an ice sheet, hundreds of metres
+                   thick, with ocean underneath
+  cavity           the ocean space under an ice shelf
+  grounding line   where the ice lifts off the seafloor and starts to
+                   float; the deepest part of the ice base
+  ice front        the cliff at the seaward edge of an ice shelf
+  ice draft        how deep the ice base is below sea level
+  basal melt       melting of the ice shelf from below by the ocean
+  freezing point   the temperature at which seawater freezes; lower for
+                   saltier water and at higher pressure (depth)
+  thermal forcing  how far the water is above its freezing point (TF)
+  thermal driving  the same, measured right next to the ice
+  ice pump         melting at depth, rising meltwater, refreezing higher
+                   up, driven by the pressure effect on freezing
+  supercooled      colder than its own freezing point, but still liquid
+  marine ice       ice formed by seawater refreezing onto the ice base
+  three-equation   the melt formula: heat balance, salt balance and
+  model            freezing point at the ice base, solved together
+  transfer         gamma_T, gamma_S: how fast heat and salt cross the
+  coefficients     thin water layer touching the ice
+  friction         a measure of how fast the water rubs along the ice
+  velocity (u*)    (m/s); used for speed-dependent coefficients
+  Gamma_T          ISOMIP+'s dimensionless number: gamma_T = Gamma_T x u*
+  power law        melt = a x TF^n; n is the "exponent"
+  restoring        nudging temperature/salinity toward a target in some
+  (relaxation)     cells (pkg/rbcs)
+  steady           no longer changing (here: less than 2% per year)
+  pickup file      a saved model state to restart from
+  nIter0           the step number a run starts from (0 = fresh start)
+  partial cell     a grid cell that is only partly water (hFacC < 1)
+  hFacMin          the smallest allowed open fraction of a cell
+  CFL number       how far water moves in one time step compared with a
+                   cell size; must stay well below 1
+  NaN              "not a number": the model has blown up
+  virtual salt     adding fresh water by removing salt instead of adding
+  flux             volume
+  overturning      the circulation in a north-south (or along-cavity)
+                   and depth plane; in Sverdrups (1 Sv = 1 million m^3/s;
+                   1 mSv = 1000 m^3/s)
+  convergence      the answer stops changing when the grid is refined
+  ISOMIP+          the second Ice Shelf-Ocean Model Intercomparison
+                   Project: a standard set of test cases
+  calibration      tuning an uncertain number until the model hits a
+                   target
+  IEEE build       a careful, slower build for exact comparisons
+  rdmds            the MITgcmutils function that reads MITgcm output

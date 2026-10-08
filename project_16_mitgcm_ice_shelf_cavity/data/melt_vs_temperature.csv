@@ -1,0 +1,5 @@
+case,run_years,far_field_temperature_c,thermal_forcing_c,actual_thermal_forcing_c,steady_melt_m_per_yr,change_last_year_percent,top_cell_thermal_driving_c
+open_base,20,-1.9,0.5214,0.5214,0.02520,-3.68,-0.00845
+open_p05,20,-1.4,1.0214,1.0213,0.10393,0.20,-0.00960
+open_p10,10,-0.9,1.5214,1.5213,0.20739,-1.98,-0.01660
+open_p20,10,0.1,2.5214,2.5213,0.41489,0.31,-0.03115

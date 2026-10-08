@@ -1,0 +1,9 @@
+This script builds a predictive Machine Learning (ML) model using a Random Forest Regressor to predict monthly Sea Surface Temperature (SST) one month ahead at one grid point off the California coast. Rather than computing complex fluid dynamics equations, the script uses past temperatures (lags) and seasonal month numbers into an ensemble of decision trees which enables rapid time-series forecasting. They are especially useful for non-linear localized patterns.
+
+We extract the desired month so the model can learn annual seasonal cycles. [.shift(1) and .shift(2):]creates lagged features which gives the model short-term memory of water temperatures 1 and 2 months prior.
+
+(train_test_split) reserves the first 80% of historical data for training and the most recent 20% for testing. Setting (shuffle=False) is critical for time-series data so the model doesn't cheat by looking into the future.
+
+RandomForestRegressor(n_estimators=100) creates an ensemble of 100 decision trees to learn non-linear relationships and (model.fit) trains the trees on historical observations. 
+
+Finally we evaluate predictions with (R^2) score and (RMSE), and use (plt.plot) to compare actual test observations against ML model forecasts.

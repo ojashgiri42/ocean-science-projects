@@ -1,0 +1,18 @@
+# Restoring zone for project 16, step 3 (final design), case fine_p10 (fine grid).
+# Tendency added: -mask x (field - target) / tau, only where the mask is non-zero:
+# the open-ocean zone north of the ice front at 71S.
+ &RBCS_PARM01
+ useRBCtemp=.TRUE.,
+ useRBCsalt=.TRUE.,
+# restoring time scale at full mask strength: 1 day (in seconds)
+ tauRelaxT=86400.,
+ tauRelaxS=86400.,
+# mask 1 is used for temperature, mask 2 for salinity; both must be set
+ relaxMaskFile(1)='rbcs_mask_fine.bin',
+ relaxMaskFile(2)='rbcs_mask_fine.bin',
+# targets: far-field temperature -0.9 degC and salinity 34.4 g/kg everywhere
+ relaxTFile='theta_fine_p10.bin',
+ relaxSFile='salt_fine.bin',
+ &
+ &RBCS_PARM02
+ &

@@ -1,0 +1,9 @@
+# Packages
+ &PACKAGES
+ useShelfIce=.TRUE.,
+# project 16: averaged output through pkg/diagnostics
+ useDiagnostics=.TRUE.,
+# project 16 step 3: restoring zone near the northern wall
+ useRBCS=.TRUE.,
+#useMNC=.TRUE.,
+ &
