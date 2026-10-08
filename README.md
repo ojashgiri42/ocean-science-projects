@@ -1,6 +1,6 @@
 # Ocean Science Projects
 
-I am an environmental engineer (M.Tech, IIT Roorkee) moving into physical oceanography. This repository holds projects in Python, MITgcm(Julia),Oceananigans.jl mainly working with ocean observations and model output through xarray, NetCDF and OPeNDAP. Each project folder has its own README describing the data, method and what the saved output shows.
+I am an environmental engineer (M.Tech, IIT Roorkee) moving into physical oceanography. This repository holds projects in Python, MITgcm,Julia(Oceananigans.jl) mainly working with ocean observations and model output through xarray, NetCDF and OPeNDAP. Each project folder has its own README describing the data, method and what the saved output shows.
 
 ---
 
