@@ -21,26 +21,26 @@ A detailed, step-by-step account of every command and choice is in [TUTORIAL.md]
 - `notebooks/03_make_hosing_forcing.ipynb`: made freshwater-flux files that add exactly 0.1, 0.3 and 0.5 Sv over the subpolar North Atlantic (50-70°N, 60°W-20°E).
 - `notebooks/04_hosing_with_restoring.ipynb`: hosing for 200 years, then 300 years without it, with salinity restoring, and how much of the hosing the restoring cancels.
 - `notebooks/05_mixed_boundary_conditions.ipynb`: replaced salinity restoring with the equivalent fixed freshwater flux (mixed boundary conditions) and ran a 500-year control.
-- `notebooks/06_hosing_with_mixed_bc.ipynb`: the same hosing experiments with mixed boundary conditions, plus the diagnosis of a numerical failure, an integrity check of all runs, and a sensitivity test.
+- `notebooks/06_hosing_with_mixed_bc.ipynb`: the same hosing experiments with mixed boundary conditions, plus the diagnosis of a numerical failure in my first attempt, the fix (a flux-limited advection scheme), and an integrity check of all runs.
 - `notebooks/07_compare_and_check.ipynb`: summary of all runs, a salt-budget check of every hosing run, and the connection to Stommel's model.
 
 ## Main results
 
-![AMOC under the two boundary conditions](figures/06_amoc_restoring_vs_mixed.png)
+![AMOC under the two boundary conditions](figures/06_amoc_mixed.png)
 
-With salinity restoring (left), the AMOC weakened by 11-41% during hosing and recovered fully in every run once the hosing stopped. With mixed boundary conditions (right), every run collapsed to an AMOC index of about zero and stayed there for the 300 years after the hosing stopped, even with 0.1 Sv.
+With salinity restoring (left), the AMOC weakened by 11-41% during hosing and recovered fully in every run once the hosing stopped. With mixed boundary conditions (right), every run collapsed to an AMOC index of about zero (below 5 Sv by 2052, 2019 and 2016 for 0.1, 0.3 and 0.5 Sv) and stayed there for the 300 years after the hosing stopped, even with 0.1 Sv.
 
 ![Restoring cancellation](figures/04_restoring_cancellation.png)
 
 Within a few years, the salinity restoring removed 80-87% of the added freshwater in the hosing region. The surface had to stay fresher than observed for the restoring to push back, and that leftover freshening is what weakened the AMOC. But the push back grows as the surface gets fresher, so the AMOC could not collapse.
 
-![Surface salinity change](figures/06_sss_change_030.png)
+![Surface salinity change](figures/06_sss_change_mixed_030.png)
 
-For 0.3 Sv, the hosing region was 0.30 g/kg fresher at the end of hosing with restoring, and back to normal 300 years later. With mixed boundary conditions it was 5.73 g/kg fresher, and still 2.79 g/kg fresher 300 years after the hosing stopped. Note the different colour scales.
+For 0.3 Sv, the hosing region was 0.30 g/kg fresher at the end of hosing with restoring, and back to normal 300 years later. With mixed boundary conditions it was 5.77 g/kg fresher, and still 3.04 g/kg fresher 300 years after the hosing stopped. Note the different colour scales.
 
 ![Streamfunction after collapse](figures/06_streamfunction_mixed_030.png)
 
-Under mixed boundary conditions the deep overturning cell (about 20 Sv in the control) disappeared and did not come back. Only a shallow cell near the tropics remained.
+Under mixed boundary conditions the deep overturning cell (about 18 Sv in the control) disappeared and did not come back. Only a shallow cell near the tropics remained.
 
 ![Salt check](figures/07_salt_check.png)
 
@@ -51,10 +51,10 @@ The change in global mean salinity in every hosing run matches what the added fr
 - Reference run: my build reproduces the tutorial's reference output. The strict (IEEE) build agrees to at least 11.3 significant digits and the optimized build to at least 10.0, over 164 monitored quantities. The global mean vertical velocity is left out, because it is rounding noise around zero.
 - Hosing totals: each forcing file, read back from disk and integrated over the model's ocean area, adds 0.10000000, 0.30000000 and 0.50000000 Sv in every month. A one-year test confirmed that the model received 0.5000 Sv of extra freshwater, all inside the hosing region.
 - Salt check:
-  - Measured and predicted changes in global mean salinity agree to within 0.1% in all hosing runs, once the model's conversion of freshwater mass to volume (1000/1035) is included.
+  - Measured and predicted changes in global mean salinity agree to within 0.2% in all hosing runs, once the model's conversion of freshwater mass to volume (1000/1035) is included.
   - The total salt follows the net freshwater input plus the salt added by restoring.
-  - A separate prediction for the two controls agreed to within 0.3%.
-- Integrity check: I scanned every run for NaN, for its temperature and salinity range, and for temperatures below the freezing point. All runs passed, except the 0.5 Sv run with mixed boundary conditions (see limitations).
+  - A separate prediction for the two controls agreed to within 0.1%.
+- Integrity check: I scanned every run for NaN, for its temperature and salinity range, and for temperatures below the freezing point. All final runs passed. My first attempt at the 0.5 Sv mixed-BC run did not (see limitations).
 
 ## Limitations
 
@@ -63,11 +63,12 @@ The change in global mean salinity in every hosing run matches what the added fr
 - Idealized hosing. The extra freshwater is spread evenly over 50-70°N and not taken out anywhere else, so global sea level rises (by several metres in the 0.5 Sv runs).
 - Distorted transient time scales, because of the accelerated time stepping. Only equilibrium states should be taken literally.
 - A closed wall at 80°N. There is no Arctic Ocean and no freshwater outflow from the Nordic Seas into it. Hosing water and the fixed freshening from the mixed boundary condition can only leave southward, so the fresh surface layer in the Nordic Seas was probably much stronger than it would be in the real ocean.
-- The switch to mixed boundary conditions is itself a shock. Without any hosing, the AMOC dipped from 19.78 to 16.51 Sv before settling at 19.74 Sv. The mixed-BC hosing started at the same time as this switch.
-- Numerical failure. The 0.5 Sv run with mixed boundary conditions blew up in model year 2090, after its AMOC had already collapsed. It still printed "ended normally", because the model's yearly bounds check let NaN pass.
-  - I traced the failure to one water column next to the 80°N wall, under an extremely fresh surface layer, with the tutorial's centred advection scheme.
-  - Rerun from a clean state with a flux-limited advection scheme, it stayed stable to year 2200 and stayed collapsed.
-  - I report that run only up to 2089. Future runs check for instability every model month, with a check that also stops on NaN.
+- The switch to mixed boundary conditions is itself a shock. Without any hosing, the mixed control's AMOC dropped from 19.66 to 16.12 Sv by 2030, was back above 18 Sv only by 2205, and was still 1.5 Sv below the restoring control at 2500. The mixed-BC hosing started at the same time as this switch, so it hit a circulation that was still adjusting. The control recovered and the hosing runs did not, so hosing caused the collapse, but a start from a settled control (for example year 2300) would be cleaner. I prepared that set (`experiments/mixed2_*`) but have not run it.
+- Advection scheme. The restoring runs use the tutorial's centred advection (scheme 2). The mixed runs use a flux-limited scheme (33), because my first attempt with scheme 2 blew up in the 0.5 Sv run in model year 2090, after its AMOC had already collapsed. It still printed "ended normally", because the model's yearly bounds check let NaN pass.
+  - I traced the failure to one water column next to the 80°N wall, under an extremely fresh surface layer.
+  - Rerun from a clean state with scheme 33, it stayed stable to year 2200 and stayed collapsed. The 0.1 and 0.3 Sv runs, healthy with both schemes, differ by at most 0.83 Sv in the AMOC index.
+  - The mixed control is weaker with scheme 33 (about 18 Sv against 19.7 Sv), so absolute AMOC values of the restoring and mixed sets are not strictly comparable. Each run is compared with its own control.
+  - Every run now checks for instability every model month, with a check that also stops on NaN.
 - One run per case. Because the forcing repeats exactly every year, there is almost no natural variability, so single runs are enough to see the response, but the model's own variability is much smaller than the real ocean's.
 - The AMOC index excludes the eddy-induced (GM) transport.
 
@@ -98,12 +99,10 @@ The model source code and all runs (about 4 GB) live outside the repository. Onl
    bash scripts/run_experiment.sh ~/mitgcm_runs/hosing/build_reference_ieee $T/input ~/mitgcm_runs/hosing/reference_test_ieee
    bash scripts/run_experiment.sh ~/mitgcm_runs/hosing/build_spinup_fast $T/input ~/mitgcm_runs/hosing/spinup experiments/spinup/input
    bash scripts/run_hosing_set.sh restore experiments/hosing_forcing ~/mitgcm_runs/hosing/spinup
-   bash scripts/run_experiment.sh ~/mitgcm_runs/hosing/build_spinup_fast $T/input ~/mitgcm_runs/hosing/mixed_control \
-       "experiments/spinup/input experiments/mixed_control/input experiments/mixed_forcing/emp_mixed.bin" ~/mitgcm_runs/hosing/spinup
-   bash scripts/run_hosing_set.sh mixed experiments/mixed_forcing ~/mitgcm_runs/hosing/spinup experiments/mixed_forcing/emp_mixed.bin skip_control
+   BUILD=~/mitgcm_runs/hosing/build_safe_fast bash scripts/run_hosing_set.sh mixed experiments/mixed_forcing ~/mitgcm_runs/hosing/spinup experiments/mixed_forcing/emp_mixed.bin
    ```
 
-   The spin-up takes about 2.6 hours. Each hosing set takes about 1.2-1.5 hours. Notebooks 03 and 05 write the forcing files that the hosing runs need. So run notebook 03 before the restoring set, and the cells of notebook 05 up to "Part B" before the mixed control. Run the whole of notebook 05 once the mixed control has finished. Steps 1 and 2 also used short timing and test runs, and step 6 used diagnostic and sensitivity runs. Their changed files are in `experiments/` and their commands are in TUTORIAL.md.
+   The spin-up takes about 2.6 hours. Each hosing set takes about 1.2-1.5 hours. Notebooks 03 and 05 write the forcing files that the hosing runs need. So run notebook 03 before the restoring set, and the cells of notebook 05 up to "Part B" before the mixed set. Run the whole of notebook 05 once the mixed control has finished. `build_safe_fast` is the build with the NaN-safe bounds check (`experiments/safety_code/`). Steps 1 and 2 also used short timing and test runs, and step 6 used diagnostic and sensitivity runs. Their changed files are in `experiments/` and their commands are in TUTORIAL.md.
 
 5. Open JupyterLab and run the notebooks in `notebooks/` in order, 01 to 07. They read the runs from `~/mitgcm_runs/hosing/` and write figures to `figures/` and small results to `data/`.
 

@@ -1,9 +1,5 @@
 # Tutorial: tipping points in simple box models
 
-These notes walk through each notebook in order. I wrote them so I can explain every line of the project.
-
-The notebooks are in `notebooks/`, and they all import the shared functions in `src/models.py`. Every function there takes its parameters as arguments, so each notebook can choose its own values. Each notebook is split into small cells, with a short note before each cell saying what it does.
-
 ## Step 1: Stommel's model and its equilibria (`notebooks/01_stommel_equilibria.ipynb`)
 
 ### The question

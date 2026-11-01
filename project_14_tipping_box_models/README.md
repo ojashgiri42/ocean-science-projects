@@ -2,7 +2,6 @@
 
 Can the ocean's overturning circulation have two stable states under the same forcing? And what makes it switch from one to the other? The Atlantic overturning is one of the possible tipping elements of the climate system listed by Lenton et al. (2008). I used two classic box models, Stommel (1961) and Cessi (1994), to study this. I looked at slow changes in forcing, at random noise, and at whether a coming switch shows up in the fluctuations beforehand.
 
-These are dimensionless conceptual models, not simulations of the real ocean. A line-by-line walk-through of every notebook is in [TUTORIAL.md](TUTORIAL.md), and a plain-language guide to the whole project is in [docs/tipping box models tutorial by OjashGiri.txt](<docs/tipping box models tutorial by OjashGiri.txt>).
 
 ## What I did
 
@@ -82,8 +81,6 @@ jupyter lab
 ```
 
 In JupyterLab, open the notebooks in `project_14_tipping_box_models/notebooks/` in order (`01_stommel_equilibria.ipynb` to `06_antarctic_toy_model.ipynb`) and run each one from top to bottom. The notebooks import the model equations from `../src/models.py` and save figures to `../figures/`, so keep the folder structure as it is. The notebooks are saved with the standard Python 3 kernel; if Jupyter asks for a kernel, choose the one for the `ocean-portfolio` environment.
-
-Each notebook prints its key numbers, shows its figures, and saves them to `figures/`. On my laptop notebook 05 took about 40 seconds and the others under 20 seconds each. The notebooks with noise use fixed random seeds, so the numbers repeat exactly.
 
 ## References
 

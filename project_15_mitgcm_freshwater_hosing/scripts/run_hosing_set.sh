@@ -23,11 +23,11 @@ START=$3
 EXTRA=$4
 SKIP_CONTROL=$5
 
-BUILD=$HOME/mitgcm_runs/hosing/build_spinup_fast         # same executable as the spin-up
+BUILD=${BUILD:-$HOME/mitgcm_runs/hosing/build_spinup_fast}   # same executable as the spin-up; step 6 sets BUILD to build_safe_fast (NaN-safe bounds check)
 BASE=$HOME/models/MITgcm/verification/tutorial_global_oce_latlon/input   # original tutorial inputs
 RUNS=$HOME/mitgcm_runs/hosing                            # all runs live here, outside the repo
 COMMON=$PROJECT/experiments/spinup/input                 # data.pkg and data.diagnostics from the spin-up
-END_OF_HOSING=0000792000                                 # step at the end of model year 2200
+END_OF_HOSING=${END_OF_HOSING:-0000792000}               # step at the end of the hosing (default: end of model year 2200; the mixed2 set uses 0000900000)
 
 run_chain () {
     CODE=$1                                              # 010, 030 or 050

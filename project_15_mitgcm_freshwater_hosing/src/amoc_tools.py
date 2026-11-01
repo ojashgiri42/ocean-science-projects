@@ -6,6 +6,7 @@ exactly the same code.
 """
 
 import os
+import re
 import glob
 
 import numpy as np
@@ -87,3 +88,69 @@ def annual_field(run_dir, prefix, field, iteration):
     """One field from a multi-field annual output file, e.g. SRELAX from surf_flux_annual."""
     data, its, meta = rdmds(os.path.join(run_dir, prefix), iteration, returnmeta=True)
     return data[meta["fldlist"].index(field)]
+
+
+def monitor_series(output_path, name):
+    """Values of one %MON statistic, one per monitor block, read from a run's output.txt."""
+    text = open(output_path).read()
+    return np.array([float(v) for v in re.findall(r"%MON " + name + r"\s+=\s+(\S+)", text)])
+
+
+def solver_values(output_path):
+    """The cg2d right-hand-side maximum (rhsMax) printed at every step, as text, for exact comparisons."""
+    return [line.split()[-1] for line in open(output_path) if line.startswith(" cg2d: Sum(rhs),rhsMax")]
+
+
+def freezing_point(salt, pressure_dbar):
+    """Freezing point of sea water in deg C (UNESCO, Millero 1978); pressure in dbar, about the depth in m."""
+    return -0.0575 * salt + 1.710523e-3 * np.abs(salt) ** 1.5 - 2.154996e-4 * salt ** 2 - 7.53e-4 * pressure_dbar
+
+
+def mean_over_years(years, series, last_year, n_years):
+    """Mean of an annual series over the n_years ending at last_year."""
+    keep = (years > last_year - n_years) & (years <= last_year)
+    return series[keep].mean()
+
+
+def mean_surface_salinity(grid, run_dirs, last_year, n_years):
+    """Mean surface salinity over the n_years ending at last_year, from one or more run folders."""
+    total = np.zeros(grid["ocean"].shape)
+    count = 0
+    for run_dir in run_dirs:
+        for it in output_iterations(run_dir, "surf_ts_annual"):
+            if last_year - n_years < it / STEPS_PER_YEAR <= last_year:
+                total += annual_field(run_dir, "surf_ts_annual", "SALT", it)
+                count += 1
+    return total / count
+
+
+def mean_streamfunction(grid, run_dirs, last_year, n_years):
+    """Atlantic streamfunction of the mean meridional velocity over the n_years ending at last_year."""
+    v_sum = None
+    count = 0
+    for run_dir in run_dirs:
+        for it in output_iterations(run_dir, "vvel_annual"):
+            if last_year - n_years < it / STEPS_PER_YEAR <= last_year:
+                v = rdmds(os.path.join(run_dir, "vvel_annual"), it)
+                v_sum = v if v_sum is None else v_sum + v
+                count += 1
+    return atlantic_streamfunction(v_sum / count, grid)
+
+
+def region_mean(grid, field, mask):
+    """Area-weighted mean of a 2D field over the cells selected by a mask."""
+    return np.sum(field * grid["rac"] * mask) / np.sum(grid["rac"] * mask)
+
+
+def check_run(run_dir):
+    """Health of one run: ended normally, NaN count in the log, and output files with non-finite values."""
+    text = open(os.path.join(run_dir, "output.txt")).read()
+    n_files = n_bad = 0
+    for f in glob.glob(os.path.join(run_dir, "*.data")):
+        if os.path.islink(f) or os.path.basename(f).startswith("pickup"):   # links are the inputs; pickups are restarts
+            continue
+        n_files += 1
+        if not np.all(np.isfinite(np.fromfile(f, dtype=">f4"))):
+            n_bad += 1
+    return {"ended_normally": "Execution ended Normally" in text, "nan_lines": len(re.findall(r"\bNaN\b", text)),
+            "files": n_files, "bad_files": n_bad}

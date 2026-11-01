@@ -288,7 +288,7 @@ Strong salinity restoring ties the surface salinity to observations. That works 
 
 - Salinity restoring off: `tauSaltClimRelax = 0`. I checked in the source (`set_parms.F`) that this sets `doSaltClimRelax` to false, so the restoring rate is exactly zero. The run's configuration printout confirms `doThetaClimRelax = T` and `doSaltClimRelax = F`.
 - `EmPmRFile = 'emp_mixed.bin'`: the original EmPmR plus the freshwater flux equivalent to the spin-up's restoring.
-- `mixed_control`: 500 years (2001-2500) from the spin-up pickup, the same start as the restoring runs. It also serves as the control for step 6.
+- `mixed_control`: 500 years (2001-2500) from the spin-up pickup, the same start as the restoring runs. It also serves as the control for step 6. I first ran it with the tutorial's default tracer advection (scheme 2) and later reran it with the flux-limited scheme 33 (`tempAdvScheme = saltAdvScheme = 33`), because step 6's 0.5 Sv run blew up with scheme 2. All the numbers in this step are from the scheme-33 rerun. With scheme 2 the control dipped by 3.3 Sv and settled at 19.74 Sv.
 
 ### The notebook, block by block
 
@@ -319,41 +319,40 @@ Part B analyses the mixed control.
 | | year 2001 | mean 2491-2500 | lowest | trend, last 300 years |
 | :--- | ---: | ---: | ---: | ---: |
 | restoring control | 19.82 Sv | 19.94 Sv | 19.82 Sv | +0.025 Sv per century |
-| mixed control | 19.78 Sv | 19.74 Sv | 16.51 Sv | -0.023 Sv per century |
+| mixed control | 19.66 Sv | 18.40 Sv | 16.12 Sv | +0.103 Sv per century |
 
-The mixed control did not stay close to the spun-up state at first, and I report that as a result, not a failure.
+The mixed control did not stay close to the spun-up state, and I report that as a result, not a failure.
 
-- With no hosing at all, the AMOC fell below 19 Sv by 2009 and reached 16.51 Sv in 2038, a drop of about 3.3 Sv.
-- It recovered above 19 Sv by 2072 and peaked at 19.64 Sv in 2087.
-- It dipped again to 19.20 Sv in 2127.
-- It then settled at 19.74 Sv, 0.21 Sv below the restoring control at the end.
+- With no hosing at all, the AMOC fell below 19 Sv by 2003 and below 18 Sv by 2009. It reached 16.12 Sv in 2030, a drop of about 3.5 Sv.
+- It was above 17 Sv again by 2111 and above 18 Sv by 2205.
+- At 2491-2500 it was 18.40 Sv, still 1.54 Sv below the restoring control, and still rising by about 0.1 Sv per century.
 
-So switching the boundary condition is a shock in itself, even with a flux built to match the restoring. Possible reasons, which I have not tested:
+So switching the boundary condition is a shock in itself, even with a flux built to match the restoring, and with scheme 33 the adjustment takes about 200 years and is not finished at 2500. Possible reasons, which I have not tested:
 
 - The fixed flux matches the restoring's 100-year average, but not its year-to-year response to the actual surface salinity.
 - Once the restoring is gone, nothing damps the salinity anomalies the switch creates.
 
-The model did not collapse, and it found a state close to the original. But the first ~150 years of a mixed-BC run start with this adjustment, which step 6 needs to keep in mind.
+The model did not collapse, and it moved toward a state close to the original. But the first ~200 years of a mixed-BC run are dominated by this adjustment, which step 6 needs to keep in mind.
 
-Surface salinity drifted too. At 2491-2500 the mixed control's surface is 0.0154 g/kg saltier in the hosing region and 0.0482 g/kg saltier over the Atlantic than the restoring control. Its global volume-mean salinity is 0.01247 g/kg higher.
+Surface salinity drifted too. At 2491-2500 the mixed control's surface is 0.0628 g/kg saltier in the hosing region and 0.1684 g/kg saltier over the Atlantic than the restoring control. Its global volume-mean salinity is 0.01250 g/kg higher.
 
-The salt prediction. In step 4 I found that the total salt in this model only responds to the net freshwater the ocean gains or loses. If that is right, I can predict the 0.01247 g/kg difference:
+The salt prediction. In step 4 I found that the total salt in this model only responds to the net freshwater the ocean gains or loses. If that is right, I can predict the 0.01250 g/kg difference:
 
 - The restoring control loses salt through `SRELAX`: -545.9 t/s on average, which is -0.00620 g/kg over 500 years.
 - The mixed control has a net evaporation of +0.0160 Sv, which concentrates the salt by +0.00631 g/kg over 500 years. This includes the factor 1000/1035 explained in step 7.
-- The predicted difference is +0.01251 g/kg. The measured difference is +0.01247 g/kg, within 0.3%. Without the 1000/1035 factor the prediction was +0.01273 g/kg, 2% too large.
+- The predicted difference is +0.01251 g/kg. The measured difference is +0.01250 g/kg, within 0.1%. Without the 1000/1035 factor the prediction was +0.01273 g/kg, 2% too large.
 
-This is good support for the salt explanation from step 4.
+This is good support for the salt explanation from step 4. The salt budget does not depend on the advection scheme, because both schemes conserve salt.
 
 ### What to look for in the figures
 
 - `figures/05_restoring_equivalent_flux.png`: the freshwater flux that replaces the restoring, in m/yr (red = extra evaporation, blue = extra freshwater). There is extra freshwater along the subpolar North Atlantic and the Kuroshio region, and extra evaporation in the western tropical Pacific. These are the places where the model's surface salinity disagreed with observations.
-- `figures/05_amoc_mixed_control.png`: the restoring control (black) is flat. The mixed control (green) drops by about 3.3 Sv over the first 40 years, recovers, dips again, and settles slightly lower.
+- `figures/05_amoc_mixed_control.png`: the restoring control (black) is flat. The mixed control (green) drops by about 3.5 Sv over the first 30 years, then recovers slowly and is still about 1.5 Sv lower at 2500.
 - `figures/05_sss_mixed_minus_restore.png`: by the end, most of the ocean surface is slightly saltier in the mixed control, but the Labrador Sea and the area near Hudson Strait are fresher.
 
 ### What I learned
 
-Removing salinity restoring is not a neutral change, even when the replacement flux is built to match it. The model went through a 3 Sv dip and a slow adjustment before settling about 0.2 Sv weaker. Without restoring, nothing pulls the salinity back, so whatever the system does next is free to persist. The salt prediction matched to within 0.3%, which confirms that this model's total salt only follows the net freshwater input.
+Removing salinity restoring is not a neutral change, even when the replacement flux is built to match it. The model went through a 3.5 Sv dip and a slow adjustment that was still going 500 years later, about 1.5 Sv weaker. Without restoring, nothing pulls the salinity back, so whatever the system does next is free to persist. The salt prediction matched to within 0.1%, which confirms that this model's total salt only follows the net freshwater input.
 
 ## Step 6: Hosing with mixed boundary conditions (`experiments/mixed_hose*/`, `notebooks/06_hosing_with_mixed_bc.ipynb`)
 
@@ -367,19 +366,19 @@ The same design as step 4: 0.1, 0.3 and 0.5 Sv for 200 years (2001-2200), then 3
 
 - Each run's `data` file is a copy of `mixed_control`'s: salinity restoring off, temperature restoring on.
 - The "on" runs use the mixed-BC hosing files from step 5 (`emp_mixed.bin` plus the anomaly). The "off" runs use `emp_mixed.bin`.
-- `mixed_control` from step 5 is the control, so `run_hosing_set.sh` got a `skip_control` option, and only 3 runs ran at once.
-- The command was `bash scripts/run_hosing_set.sh mixed experiments/mixed_forcing ~/mitgcm_runs/hosing/spinup experiments/mixed_forcing/emp_mixed.bin skip_control`. The set took 1 h 14 min.
+- I ran this set twice. The first attempt used the tutorial's default tracer advection (centred second order, scheme 2) and the 0.5 Sv run blew up (next section). The final set, which every number below comes from, uses a flux-limited advection scheme (`tempAdvScheme = saltAdvScheme = 33`) in all seven runs, including `mixed_control`, which I reran so that the control and the hosing runs use the same numerics. The monitor and its bounds check run every model month.
+- The command was `BUILD=$HOME/mitgcm_runs/hosing/build_safe_fast bash scripts/run_hosing_set.sh mixed experiments/mixed_forcing ~/mitgcm_runs/hosing/spinup experiments/mixed_forcing/emp_mixed.bin`, after moving the first attempt's folders to `~/mitgcm_runs/hosing/old_mixed_scheme2/`. The set took 1 h 15 min, with the control and the three chains running at once. `BUILD` is the executable with the NaN-safe bounds check described below. The restoring runs of step 4 still use scheme 2.
 
-### A numerical failure
+### The first attempt: a numerical failure
 
-All six runs printed "Execution ended Normally". But the 0.5 Sv run's fields became NaN (not a number) in model year 2090, and stayed NaN in the "off" part too, which restarted from a pickup that was already NaN.
+In the first attempt all six runs printed "Execution ended Normally". But the 0.5 Sv run's fields became NaN (not a number) in model year 2090, and stayed NaN in the "off" part too, which restarted from a pickup that was already NaN.
 
 - The free-surface solver (`cg2d`) shows what happened. Its right-hand side, normally about 2.5, grew slowly over about 100 time steps, then exploded over the last 6: 1.6e2, 1.2e5, 7.8e10, 4.6e27, 1.0e74, 4.1e204, then NaN.
 - The monitor statistics just before gave no warning. The CFL numbers were about 0.04, and the lowest salinity was 23.5 g/kg.
 - It was not just the rising sea level. The hosing is not compensated, so sea level rises: `eta` was 1.9-4.6 m when it failed, but the restoring 0.5 Sv run reached 9.7 m without trouble.
 - In the 0.3 Sv run, the same solver value never went above 2.6.
 
-To find the cause, I reran the run in two stages (`experiments/diagnose_hose050/`, appendix of notebook 06).
+To find the cause, I reran it in two stages (`experiments/diagnose_hose050/`, appendix A of notebook 06).
 
 - Stage 1 reran it from year 2000 to step 752150, about 150 steps before the failure. It took 409 s.
 - Stage 2 restarted from stage 1's final checkpoint. It was saved as a rolling checkpoint, `pickup.ckptA`, so stage 2 uses `pickupSuff = 'ckptA'`. It ran the last steps with a full snapshot and a monitor block at every step.
@@ -391,120 +390,111 @@ What the snapshots show:
 - Where: one column at 78°N, 2°E, in the northernmost row of the grid, next to the model's closed wall at 80°N (the Fram Strait / Greenland Sea area). Its cells are 92 km wide, the narrowest in the model, because the 4° longitude lines converge there.
 - The column before it failed (step 752150): a very fresh, cold surface layer (27.7 g/kg, -1.8 °C) on top of warm Atlantic water (7.2 °C at 300-450 m), with salinity rising from 27.7 to 34.7 g/kg over the top 450 m. That fresh cap is what the collapsed AMOC and the hosing leave behind. Nothing mixes it away under mixed boundary conditions.
 - What grew: the vertical velocity through the whole column, from about 5e-5 to 9e-4 m/s over about 140 steps. With the 1-day tracer time step, the local vertical CFL number (|w| x 1 day / layer thickness) rose from 0.03 to 0.52.
-- What then went wrong: new values appeared that were nowhere in the column before: 12.5 °C at 290 m, salinity 36.4 g/kg at depth, and -2.5 °C at 290 m (below freezing). The tutorial uses centred second-order advection for tracers (`tempAdvScheme = saltAdvScheme = 2`). This scheme can create new maxima and minima when the flow crosses a sharp gradient at a large CFL number. Once that started, temperature and sea level in the column ran away within a few steps.
+- What then went wrong: new values appeared that were nowhere in the column before: 12.5 °C at 290 m, salinity 36.4 g/kg at depth, and -2.5 °C at 290 m (below freezing). Centred second-order advection can create new maxima and minima when the flow crosses a sharp gradient at a large CFL number. Once that started, temperature and sea level in the column ran away within a few steps.
 
-My reading: a numerical instability, not a physical result. It needed three things together: an extremely sharp fresh cap (only in the collapsed, strongly hosed state), the long 1-day tracer time step, and a non-monotonic advection scheme, in the narrowest grid cell next to an artificial wall. I don't know why the vertical velocity started to grow. The sensitivity test below shows that the advection scheme matters. The model blew up after the AMOC had already collapsed. I report the 0.5 Sv run only up to 2089. The two lessons:
+My reading: a numerical instability, not a physical result. It needed three things together: an extremely sharp fresh cap (only in the collapsed, strongly hosed state), the long 1-day tracer time step, and a non-monotonic advection scheme, in the narrowest grid cell next to an artificial wall. I don't know why the vertical velocity started to grow.
 
-- "Ended normally" does not prove a run is healthy, so notebook 06 now also checks that every value is a finite number.
-- A run that becomes unstable must not be quietly dropped or patched.
+The lessons: "ended normally" does not prove a run is healthy, so notebook 06 now stops if any run has a NaN or a non-finite output value. And a run that becomes unstable must not be quietly dropped or patched.
 
-#### Integrity check of all runs (appendix B of notebook 06)
+#### Sensitivity test of the advection scheme (appendix B)
 
-After this failure I checked every run, not just that one. For each run I scanned:
+I restarted from a clean state and changed only the advection scheme (`experiments/sensitivity_hose050/`).
 
-- the model log for NaN;
-- every output file (not counting pickups) for non-finite values;
-- the yearly temperature and salinity range from the monitor;
-- temperatures below the local freezing point. I used the UNESCO formula (Millero 1978) on the annual-mean surface fields and on the 10-year 3D means.
+- Stage 0 reran the 0.5 Sv mixed-BC run from year 2000 to the end of model year 2088 (step 751680), about 620 steps before the instability, and saved that state.
+- `orig` restarted from it with scheme 2. All 630 solver values were identical to the original run, step by step, so the blow-up reproduced exactly. It was stopped at step 752310 by the new NaN-safe check.
+- `fluxlim` restarted from the same state with the flux-limited scheme 33 and nothing else changed. It ran to year 2200 with no NaN, and the AMOC stayed collapsed.
 
-| run | NaN lines in log | output files with non-finite values | T range (°C) | S range (g/kg) | lowest surface T - Tf (°C) |
+So scheme 2 was needed for the blow-up, and changing it removed the blow-up without changing the collapsed state. I changed only one thing, so the fresh cap and the long tracer time step may still have been needed as well. This test is why the final set uses scheme 33.
+
+#### Does the scheme change the other runs?
+
+Yes, a little. The 0.1 and 0.3 Sv runs were healthy with scheme 2, so I can compare them with the scheme-33 reruns. The AMOC index differs by at most 0.83 Sv (0.1 Sv), 0.65 Sv (0.3 Sv) and 0.57 Sv over the 89 years where the 0.5 Sv run was valid. The collapse is the same in every case. The bigger change is the control: with scheme 33 the mixed control sits near 18 Sv, against 19.7 Sv with scheme 2 (see the caveat below).
+
+#### Early warning signs?
+
+There were none at yearly resolution in the first attempt. Up to 2089, the 0.5 Sv run's largest vertical velocity (2.09e-05 m/s) and its CFL number (0.024) were the same as in the healthy 0.3 Sv run. The only differences were how fresh it was: lowest salinity anywhere 23.49 against 26.56 g/kg, and surface salinity at 78°N, 2°E 27.63 against 29.22 g/kg. The instability itself grew within about 150 model days, too fast for yearly output to catch.
+
+#### Integrity check of all runs (appendix C of notebook 06)
+
+For each run I scanned the model log for NaN, every output file (not counting pickups) for non-finite values, the monitor's temperature and salinity range, and temperatures below the local freezing point. I used the UNESCO formula (Millero 1978) on the annual-mean surface fields and on the 10-year 3D means.
+
+| run | NaN lines in log | non-finite output files | T range (°C) | S range (g/kg) | lowest surface T - Tf (°C) |
 | :--- | ---: | ---: | :--- | :--- | ---: |
-| spinup | 0 | 0 / 6263 | -1.97 to 30.44 | 29.74 to 37.53 | 0.36 |
-| restore_control | 0 | 0 / 1598 | -1.97 to 30.42 | 29.74 to 37.51 | 0.49 |
-| restore_hose010/030/050, on and off | 0 | 0 in each | -1.97 to 30.42 | 29.74 to 37.52 | 0.49 to 0.51 |
-| mixed_control | 0 | 0 / 1598 | -1.97 to 30.42 | 29.52 to 37.55 | 0.48 |
-| mixed_hose010_on / off | 0 / 0 | 0 / 665, 0 / 976 | -1.98 to 30.42 | 27.87 to 37.77 | 0.48 / 0.58 |
-| mixed_hose030_on / off | 0 / 0 | 0 / 665, 0 / 976 | -1.98 to 30.43 | 25.78 to 37.56 | 0.48 / 0.52 |
-| mixed_hose050_on | 44577 | 356 / 665 | -1.99 to 30.42 (finite part) | 23.49 to 37.53 | 0.48 |
-| mixed_hose050_off | 121242 | 949 / 976 | all NaN | all NaN | - |
+| spinup | 0 | 0 | -1.97 to 30.44 | 29.74 to 37.53 | 0.36 |
+| restore_control, restore_hose* | 0 | 0 | -1.97 to 30.42 | 29.74 to 37.52 | 0.49 to 0.51 |
+| mixed_control | 0 | 0 | -1.97 to 30.42 | 29.74 to 37.65 | 0.49 |
+| mixed_hose010 on / off | 0 / 0 | 0 / 0 | -1.98 to 30.42 / 30.09 | 28.07 to 37.95 / 28.03 to 37.37 | 0.49 / 0.69 |
+| mixed_hose030 on / off | 0 / 0 | 0 / 0 | -1.98 to 30.42 / 30.09 | 25.70 to 37.68 / 25.71 to 37.29 | 0.49 / 0.73 |
+| mixed_hose050 on / off | 0 / 0 | 0 / 0 | -1.98 to 30.42 / 30.09 | 22.99 to 37.58 / 23.01 to 37.24 | 0.49 / 0.72 |
 
-- Every run except the 0.5 Sv mixed chain is free of NaN.
-- No annual-mean surface cell was more than 0.1 °C below its freezing point in any run.
+- Every run is free of NaN.
+- No annual-mean surface cell was below its freezing point in any run.
 - In the 10-year 3D means, the only value below freezing was -0.17 °C, early in the spin-up, while the model adjusted from its initial state.
 - These are annual and 10-year means, so a short instantaneous dip below freezing would not show here.
 
-#### Early warning signs? (appendix C)
-
-There were none at yearly resolution. Up to 2089, the 0.5 Sv run's largest vertical velocity (2.09e-05 m/s) and its CFL number (0.024) were the same as in the healthy 0.3 Sv run. The only differences were how fresh it was:
-
-- lowest salinity anywhere: 23.49 against 26.56 g/kg;
-- surface salinity at 78°N, 2°E: 27.63 against 29.22 g/kg.
-
-The instability itself grew within about 150 model days, too fast for yearly output to catch.
-
-#### Sensitivity test of the advection scheme (appendix D)
-
-I restarted from a clean state and changed only the advection scheme. These runs are kept out of the comparison tables.
-
-- Stage 0 reran the 0.5 Sv mixed-BC run from year 2000 to the end of model year 2088 (step 751680), about 620 steps before the instability, and saved that state.
-- `orig` restarted from it with the original scheme. All 630 solver values were identical to the original run, step by step, so the blow-up reproduced exactly. This time the run was stopped at step 752310 with "SOLUTION IS HEADING OUT OF BOUNDS: tMin,tMax = NaN NaN", by the new NaN-safe check described below.
-- `fluxlim` restarted from the same state with a flux-limited, monotonic scheme (`tempAdvScheme = saltAdvScheme = 33`) and nothing else changed. It ran to year 2200 with no NaN: 1345 monthly checks, temperature -1.98 to 30.42 °C, lowest salinity 23.00 g/kg. The AMOC stayed collapsed, between -0.23 and -0.11 Sv. The surface salinity at 78°N, 2°E went from 27.66 to 26.95 g/kg.
-
-So the original scheme was needed for the blow-up, and changing it removed the blow-up without changing the collapsed state. This supports my reading that the failure was numerical. The fresh cap and the long tracer time step may still have been needed too. I only changed one thing.
-
 #### Checking for instability in future runs
 
-Following this failure, every future run will:
+Every run now:
 
-- run the monitor and its bounds check every model month (`monitorFreq = 2592000`) instead of every year;
-- use a build with a NaN-safe bounds check. In `experiments/safety_code/mon_solution.F`, the test `(tMax-tMin) .GT. limit` is rewritten as `.NOT.((tMax-tMin) .LE. limit)`, which is also true when the range is NaN. This only changes when a run stops, not what it computes: the `orig` rerun with this build reproduced the original solver values exactly;
-- be marked as failed by `run_experiment.sh` if "NaN" appears anywhere in `output.txt`, even if the model says it ended normally.
+- runs the monitor and its bounds check every model month (`monitorFreq = 2592000`) instead of every year;
+- uses a build with a NaN-safe bounds check (`build_safe_fast`). In `experiments/safety_code/mon_solution.F`, the test `(tMax-tMin) .GT. limit` is rewritten as `.NOT.((tMax-tMin) .LE. limit)`, which is also true when the range is NaN. This only changes when a run stops, not what it computes: the `orig` rerun with this build reproduced the original solver values exactly;
+- is marked as failed by `run_experiment.sh` if "NaN" appears anywhere in `output.txt`, even if the model says it ended normally.
 
-A monthly check alone would not have been enough. In this run, the temperatures were out of range for only about 4 steps before turning into NaN, so a check every 30 steps could easily miss that window. With the NaN-safe check, it does not matter whether the check lands before or after the NaNs appear.
+A monthly check alone would not have been enough. In the failed run, the temperatures were out of range for only about 4 steps before turning into NaN, so a check every 30 steps could easily miss that window. With the NaN-safe check, it does not matter whether the check lands before or after the NaNs appear.
 
 #### A limitation this exposed
 
-The model domain ends at 80°N with a closed wall. There is no Arctic Ocean and no outflow of fresh water from the Nordic Seas into it. The hosing water and the fixed freshening from `emp_mixed.bin` can only leave the Nordic Seas southward, through a circulation that has collapsed. So the fresh cap in the Nordic Seas, where the instability started, was probably much stronger than it would be in the real ocean, or in a model with an Arctic.
-
-Along the way I also caught a false alarm of my own. A quick check showed a surface salinity of -1.37 g/kg in the 0.3 Sv run, but that came from a land point, where output values mean nothing. Over ocean cells the lowest value is 25.80 g/kg.
+The model domain ends at 80°N with a closed wall. There is no Arctic Ocean and no outflow of fresh water from the Nordic Seas into it. The hosing water and the fixed freshening from `emp_mixed.bin` can only leave the Nordic Seas southward, through a circulation that has collapsed. So the fresh cap in the Nordic Seas, where the instability started, was probably much stronger than it would be in the real ocean, or in a model with an Arctic. Scheme 33 stops the blow-up, but it does not change this.
 
 ### The notebook, block by block
 
-1. Checks: every run ended normally, every annual-mean velocity value is finite (all except the 0.5 Sv run after 2089), and the year-2200 pickups exist.
-2. AMOC index for the mixed-BC runs, saved to `data/amoc_index_mixed.csv`. The restoring runs come from step 4's CSV file.
-3. A side-by-side figure and a summary table. Each run is compared with its own control. I call a run "recovered" if its last 10 years are within 1 Sv of its control.
-4. The strongest valid case. The 0.5 Sv mixed-BC run is not valid after 2089, so for the maps and streamfunctions I use 0.3 Sv, the strongest run that is valid throughout, for both boundary conditions, so they are compared at the same strength.
-5. The step-4 overshoot check: surface salinity in the subtropical Atlantic during the restoring run's overshoot.
+1. A configuration cell (paths, hosing strengths, years, colours) and a `SET` switch, so the same notebook can analyse a different set of runs.
+2. Checks: every run ended normally, has no NaN in its log and no non-finite output file, and the year-2200 pickups exist. The notebook stops if any of this fails.
+3. AMOC index for the mixed-BC runs, saved to `data/amoc_index_mixed.csv`. The restoring runs come from step 4's CSV file.
+4. A side-by-side figure, a summary table, and the year the AMOC first fell below 5 Sv. Each run is compared with its own control. I call a run "recovered" if its last 10 years are within 1 Sv of its control.
+5. The strongest valid case is now 0.5 Sv, but I keep 0.3 Sv for the maps and streamfunctions so they stay comparable with the first write-up and with step 4's restoring run of the same strength.
+6. The step-4 overshoot check: surface salinity in the subtropical Atlantic during the restoring run's overshoot.
+7. Appendices: A the first attempt's failure, B the scheme comparison, C the integrity check.
 
 ### Results
 
+The control AMOC is 17.94 Sv over 2191-2200 and 18.40 Sv over 2491-2500 for the mixed set, and 19.87 and 19.94 Sv for the restoring set.
+
 | set | hosing | end of hosing (2191-2200) | change | lowest (year) | end of recovery (2491-2500) | change | recovered? |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- |
-| restoring | control | 19.87 Sv | | | 19.94 Sv | | |
 | restoring | 0.1 Sv | 17.60 Sv | -2.27 Sv | 17.21 (2018) | 19.99 Sv | +0.04 Sv | yes |
 | restoring | 0.3 Sv | 14.27 Sv | -5.60 Sv | 13.52 (2020) | 20.06 Sv | +0.11 Sv | yes |
 | restoring | 0.5 Sv | 11.70 Sv | -8.17 Sv | 10.77 (2021) | 20.15 Sv | +0.20 Sv | yes |
-| mixed | control | 19.66 Sv | | | 19.74 Sv | | |
-| mixed | 0.1 Sv | -0.04 Sv | -19.70 Sv | -0.04 (2200) | 0.00 Sv | -19.73 Sv | no |
-| mixed | 0.3 Sv | -0.14 Sv | -19.80 Sv | -0.14 (2199) | -0.02 Sv | -19.76 Sv | no |
-| mixed | 0.5 Sv | numerical failure after 2089 | | -0.15 (2089) | | | |
+| mixed | 0.1 Sv | -0.08 Sv | -18.02 Sv | -0.08 (2200) | -0.08 Sv | -18.48 Sv | no |
+| mixed | 0.3 Sv | -0.16 Sv | -18.10 Sv | -0.16 (2200) | -0.07 Sv | -18.47 Sv | no |
+| mixed | 0.5 Sv | -0.24 Sv | -18.18 Sv | -0.24 (2200) | -0.07 Sv | -18.47 Sv | no |
 
 - Under mixed boundary conditions the AMOC collapsed in every run, even with 0.1 Sv.
-  - It fell below 5 Sv in 2058 (0.1 Sv), 2021 (0.3 Sv) and 2017 (0.5 Sv).
-  - By the end of hosing the AMOC index was zero within 0.15 Sv. The streamfunction shows no deep overturning cell at all, only a shallow tropical cell.
-- It did not recover. 300 years after the hosing stopped, the AMOC index was still 0.00 and -0.02 Sv.
+  - It fell below 5 Sv in 2052 (0.1 Sv), 2019 (0.3 Sv) and 2016 (0.5 Sv).
+  - By the end of hosing the AMOC index was zero within 0.25 Sv. The streamfunction shows no deep overturning cell at all (0.01 Sv north of 20°N below 500 m).
+- It did not recover. 300 years after the hosing stopped, the AMOC index was still -0.08 to -0.07 Sv.
 - Surface salinity in the hosing region (0.3 Sv runs, hosing run minus its control):
   - With restoring: -0.304 g/kg at the end of hosing, and -0.001 g/kg at the end of recovery.
-  - With mixed BC: -5.729 g/kg at the end of hosing, and still -2.794 g/kg at the end of recovery. Over the whole Atlantic the mixed-BC surface was 3.013 g/kg fresher at the end of hosing and 1.534 g/kg fresher at the end.
+  - With mixed BC: -5.771 g/kg at the end of hosing, and still -3.041 g/kg at the end of recovery. Over the whole Atlantic the mixed-BC surface was 2.984 g/kg fresher at the end of hosing and 1.775 g/kg fresher at the end.
 - The step-4 overshoot idea (salty water building up in the subtropical Atlantic, then moving north) is not supported at the surface. In the restoring 0.5 Sv run, the subtropical Atlantic (10-40°N) surface was only 0.013 g/kg saltier at the end of hosing, and 0.008 g/kg during the overshoot (2221-2230). Restoring keeps the surface close to observations, so if salt built up, it would be below the surface. I did not check that, so the overshoot is still unexplained.
 
 ### A caveat
 
-The hosing runs start at the same moment as the switch to mixed boundary conditions. Step 5 showed that this switch alone made the AMOC dip by 3.3 Sv over the first 40 years. So the hosing hit a circulation that was already adjusting. The mixed control recovered from that dip, while the 0.1 Sv run kept falling all the way to zero, so the collapse is caused by the hosing. But a cleaner design would start the hosing from the mixed control after it has settled, for example at year 2300.
+The hosing runs start at the same moment as the switch to mixed boundary conditions, and the rerun shows that this adjustment is bigger and slower than I thought. With scheme 33 the mixed control, with no hosing at all, dropped below 18 Sv by 2009 and reached 16.12 Sv in 2030. It was above 17 Sv again by 2111 and above 18 Sv by 2205, and at 2491-2500 it was still 1.54 Sv below the restoring control. So the hosing hit a circulation that spent its first 200 years or so adjusting. The control recovered while every hosing run kept falling to zero, so the collapse is caused by the hosing. But a cleaner design would start the hosing after the control has settled, for example at year 2300. I prepared that set (`experiments/mixed2_*`, hosing 2301-2500) but have not run it yet.
+
+The control also differs between the two schemes (about 18 Sv with scheme 33, 19.7 Sv with scheme 2), and the restoring runs still use scheme 2. Each hosing run is compared with its own control, so the changes in the tables are consistent, but the absolute AMOC values of the restoring and mixed sets are not strictly comparable.
 
 ### What to look for in the figures
 
-- `figures/06_amoc_restoring_vs_mixed.png`: on the left, every restoring run weakens and then recovers. On the right, every mixed-BC run falls to zero and stays there after 2200. The cross marks where the 0.5 Sv run stopped being valid. The mixed control (black) shows the step-5 dip and recovery.
-- `figures/06_sss_change_030.png`: each row has its own colour scale, because the changes differ ten-fold. With restoring, the freshening (up to about 0.5 g/kg) stays in the hosing region and is gone by the end. With mixed BC, the whole North Atlantic surface becomes several g/kg fresher, spreading south to the subtropics, and it is still clearly fresher 300 years after the hosing stopped.
-- `figures/06_streamfunction_mixed_030.png`: the control's deep cell (about 20 Sv) is gone at the end of hosing, and still gone at the end of recovery. Only a shallow cell near the tropics remains.
-- `figures/06_early_warning_check.png`: the 0.5 and 0.3 Sv runs' largest vertical velocity, lowest salinity and surface salinity at 78°N, 2°E, year by year. The velocity curves lie on top of each other until the blow-up.
-- `figures/06_sensitivity_fluxlim.png`: the 0.5 Sv run continued with the flux-limited scheme from 2089 stays collapsed, like the 0.3 Sv run.
-- `figures/06_blowup_column.png`: the column at 78°N, 2°E in the last ~150 steps of the 0.5 Sv mixed-BC run. Temperature and salinity profiles develop values that were not in the column before, while the local vertical CFL number grows from 0.03 to 0.52.
-- `figures/06_restoring_overshoot_sss.png`: the restoring 0.5 Sv run's surface salinity change at the end of hosing and during the overshoot, with almost no change in the subtropics.
+- `figures/06_amoc_mixed.png`: on the left, every restoring run weakens and then recovers. On the right, every mixed-BC run falls to zero and stays there after 2200. The mixed control (black) shows the long dip and slow recovery from the switch.
+- `figures/06_sss_change_mixed_030.png`: each row has its own colour scale, because the changes differ ten-fold. With restoring, the freshening (up to about 0.5 g/kg) stays in the hosing region and is gone by the end. With mixed BC, the whole North Atlantic surface becomes several g/kg fresher, spreading south to the subtropics, and it is still clearly fresher 300 years after the hosing stopped.
+- `figures/06_streamfunction_mixed_030.png`: the control's deep cell (about 18 Sv) is gone at the end of hosing, and still gone at the end of recovery. Only a shallow cell near the tropics remains.
+- `figures/06_blowup_column.png`: the column at 78°N, 2°E in the last ~150 steps of the first-attempt 0.5 Sv run. Temperature and salinity profiles develop values that were not in the column before, while the local vertical CFL number grows from 0.03 to 0.52.
+- `figures/06_scheme_comparison.png`: each strength with scheme 33 (colour) against the first attempt with scheme 2 (dashed). The collapses are close together. The 0.5 Sv first attempt stops in 2089.
 
 ### What I learned
 
-The boundary condition decides the answer. With restoring, the AMOC weakens in proportion to the hosing and always recovers: one stable state. With mixed boundary conditions, even 0.1 Sv for 200 years switches the AMOC off, and it stays off after the hosing stops. That is a second stable state, as in Stommel's model. The fresh surface layer that a weak AMOC leaves behind keeps the AMOC weak, and nothing pushes the salinity back. I also learned to check runs for NaNs, not just for "ended normally".
+The boundary condition decides the answer. With restoring, the AMOC weakens in proportion to the hosing and always recovers: one stable state. With mixed boundary conditions, even 0.1 Sv for 200 years switches the AMOC off, and it stays off after the hosing stops. That is a second stable state, as in Stommel's model. The fresh surface layer that a weak AMOC leaves behind keeps the AMOC weak, and nothing pushes the salinity back. This held when I changed the advection scheme, so it is not an artefact of the one that blew up. I also learned to check runs for NaNs, not just for "ended normally".
 
 ## Step 7: Comparison and checks (`notebooks/07_compare_and_check.ipynb`)
 
@@ -523,11 +513,11 @@ No new model runs. The notebook reads the AMOC series saved by notebooks 04-06, 
 | restoring | 0.1 Sv | -2.27 Sv (-11.4%) | +0.04 Sv | recovered |
 | restoring | 0.3 Sv | -5.60 Sv (-28.2%) | +0.11 Sv | recovered |
 | restoring | 0.5 Sv | -8.17 Sv (-41.1%) | +0.20 Sv | recovered |
-| mixed | 0.1 Sv | -19.70 Sv (-100.2%) | -19.73 Sv | not recovered |
-| mixed | 0.3 Sv | -19.80 Sv (-100.7%) | -19.76 Sv | not recovered |
-| mixed | 0.5 Sv | -19.78 Sv (-100.6%) in 2089 | n/a | numerical failure after 2089 |
+| mixed | 0.1 Sv | -18.02 Sv (-100.4%) | -18.48 Sv | not recovered |
+| mixed | 0.3 Sv | -18.10 Sv (-100.9%) | -18.47 Sv | not recovered |
+| mixed | 0.5 Sv | -18.18 Sv (-101.3%) | -18.47 Sv | not recovered |
 
-Each run is compared with its own control (19.87 Sv for restoring, 19.66 Sv for mixed, at 2191-2200). The table is saved to `data/summary_table.csv`.
+Each run is compared with its own control (19.87 Sv for restoring, 17.94 Sv for mixed, at 2191-2200). The table is saved to `data/summary_table.csv`.
 
 ### Results: the salt check
 
@@ -538,9 +528,9 @@ If the total salt only follows the net freshwater (steps 4 and 5), the change in
 
 The yearly statistics are annual averages, so I compare them with the prediction at the middle of each year.
 
-My first version left out the factor 1000/1035. It predicted 3.3-3.4% too much salinity loss in every mixed run, at every time. In the restoring runs the leftover was exactly the same in absolute terms as in the mixed run with the same hosing (for example +0.00055 g/kg at 2200 for 0.1 Sv in both). That told me the restoring part was right and the whole error was in the dilution term. A constant 3.4% matched 1 - 1000/1035 = 0.034. The model turns a freshwater mass flux into volume with `mass2rUnit = 1/rhoConst` (`ini_parms.F`), so 0.5 Sv of fresh water (5e8 kg/s) enters the model as 0.483 Sv of seawater volume. In mass terms that is also the physically right dilution.
+My first version left out the factor 1000/1035. It predicted 3.3-3.7% too much salinity loss in every mixed run, at every time. In the restoring runs the leftover was exactly the same in absolute terms as in the mixed run with the same hosing (for example +0.00055 g/kg at 2200 for 0.1 Sv in the restoring run and +0.00054 in the mixed run). That told me the restoring part was right and the whole error was in the dilution term. A constant 3.4% matched 1 - 1000/1035 = 0.034. The model turns a freshwater mass flux into volume with `mass2rUnit = 1/rhoConst` (`ini_parms.F`), so 0.5 Sv of fresh water (5e8 kg/s) enters the model as 0.483 Sv of seawater volume. In mass terms that is also the physically right dilution.
 
-With the factor included, measured and predicted agree to within 0.1% in every run, at 2100, 2200 and 2500. Examples at 2200: restoring 0.5 Sv -0.01647 measured against -0.01646 predicted; mixed 0.3 Sv -0.04684 against -0.04684. The same factor also brought the step 5 prediction from 2% to 0.3%.
+With the factor included, measured and predicted agree to within 0.2% in every run, at 2100, 2200 and 2500. Examples at 2200: restoring 0.5 Sv -0.01647 measured against -0.01646 predicted; mixed 0.3 Sv -0.04691 against -0.04691. The same factor also brought the step 5 prediction from 2% to 0.1%.
 
 So the salt budget closes, and it tells a clear story:
 
@@ -558,7 +548,7 @@ The ratio alone is not the whole story. In project 14, Stommel's model already h
 
 ### What to look for in the figures
 
-- `figures/07_summary.png`: on the left, the restoring runs weaken in a near-straight line with hosing strength, while every mixed-BC run sits at about -20 Sv, completely off. On the right, after 300 years without hosing, the restoring runs are back at zero change and the mixed-BC runs are still off.
+- `figures/07_summary.png`: on the left, the restoring runs weaken in a near-straight line with hosing strength, while every mixed-BC run sits at about -18 Sv, completely off. On the right, after 300 years without hosing, the restoring runs are back at zero change and the mixed-BC runs are still off.
 - `figures/07_salt_check.png`: measured (solid) and predicted (dashed) salinity change. The dashed lines are hidden under the solid ones because they agree so closely. The restoring runs (left) bend as the restoring puts salt back, and the mixed runs (right) fall in straight lines and then stay flat.
 
 ### What I learned

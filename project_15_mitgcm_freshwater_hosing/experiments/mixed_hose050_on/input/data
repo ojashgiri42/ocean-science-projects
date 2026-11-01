@@ -20,6 +20,10 @@
  allowFreezing=.TRUE.,
  exactConserv=.TRUE.,
  useRealFreshWaterFlux=.TRUE.,
+# project 15 mixed BC: flux-limited (monotonic) 3rd-order DST advection for temperature and salinity.
+# The default centred 2nd-order scheme blew up in the 0.5 Sv run (see notebook 06, appendix)
+ tempAdvScheme=33,
+ saltAdvScheme=33,
  useCDscheme=.TRUE.,
 # turn on looped cells
  hFacMin=.05,
@@ -55,8 +59,8 @@
  pChkptFreq= 3110400000.,
 # project 15: no snapshots; averages come from pkg/diagnostics instead
  dumpFreq=   0.,
-# project 15: print the monitor block once per model year
- monitorFreq=31104000.,
+# project 15 mixed BC: monitor block and bounds check every model month (30 days)
+ monitorFreq=2592000.,
 # 2 months restoring timescale for temperature
  tauThetaClimRelax=  5184000.,
 # 6 months restoring timescale for salinity
