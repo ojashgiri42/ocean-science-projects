@@ -2,7 +2,7 @@
 
 How much artificial ("spurious") mixing do the numerical choices in an ocean model create? With zero explicit diffusivity, any mixing between two water masses can only come from the numerics. I use the lock-exchange test of Ilicak et al. (2012) in Oceananigans.jl to measure how the tracer advection scheme, the grid resolution, the viscosity and the time step change that mixing.
 
-A step-by-step account of every choice and result is in [TUTORIAL.md](TUTORIAL.md). A plain-language guide to the whole project, from installing Julia to the conclusions, is in [docs/numerical mixing tutorial by OjashGiri.txt](<docs/numerical mixing tutorial by OjashGiri.txt>).
+A step-by-step account of every choice and result is in [TUTORIAL.md](TUTORIAL.md).
 
 ## Setup
 

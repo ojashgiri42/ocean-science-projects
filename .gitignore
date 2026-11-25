@@ -79,3 +79,9 @@ project_16_mitgcm_ice_shelf_cavity/**/run*/
 project_16_mitgcm_ice_shelf_cavity/**/*.data
 project_16_mitgcm_ice_shelf_cavity/**/*.meta
 project_16_mitgcm_ice_shelf_cavity/**/pickup*
+
+# ------------------------------------------------------------
+# Personal study notes are kept outside the repository.
+# ------------------------------------------------------------
+**/docs/Notes*.txt
+**/docs/*tutorial by*.txt

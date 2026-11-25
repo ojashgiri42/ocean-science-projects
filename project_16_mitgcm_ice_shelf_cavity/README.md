@@ -2,7 +2,7 @@
 
 How fast does the ocean melt a floating ice shelf from below, and how does that melt rate depend on the temperature of the ocean outside the cavity, on the uncertain settings of the melt formula, and on the grid? I tested this with MITgcm's `isomip` ice-shelf cavity experiment, and then set up the ISOMIP+ Ocean0 test case from its published specification. The project follows on from project 14, where a toy model assumed that melt grows with the square of the ocean temperature above freezing.
 
-A detailed, step-by-step account of every command and choice is in [TUTORIAL.md](TUTORIAL.md). A plain-language guide to the whole project, written for someone repeating it alone, is in [docs/icemodel tutorial by OjashGiri.txt](docs/icemodel%20tutorial%20by%20OjashGiri.txt).
+A detailed, step-by-step account of every command and choice is in [TUTORIAL.md](TUTORIAL.md).
 
 ## Model setup
 

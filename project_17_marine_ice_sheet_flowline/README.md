@@ -2,7 +2,7 @@
 
 Can a marine ice sheet, an ice sheet resting on a bed below sea level, have unstable grounding-line positions and jump between steady states with hysteresis? And how much does the answer from a numerical model depend on its grid resolution? I wrote my own 1D flowline model in Python to reproduce the marine ice-sheet instability of Schoof (2007) on the MISMIP experiment 3 bed (Pattyn et al. 2012), and measured how the computed grounding line depends on the grid.
 
-A step-by-step account of every equation, code block and result is in [TUTORIAL.md](TUTORIAL.md). A plain-language guide to the whole project, written for someone repeating it alone, is in [docs/ice sheet flowline tutorial by OjashGiri.txt](docs/ice%20sheet%20flowline%20tutorial%20by%20OjashGiri.txt).
+A step-by-step account of every equation, code block and result is in [TUTORIAL.md](TUTORIAL.md).
 
 ## Model
 
