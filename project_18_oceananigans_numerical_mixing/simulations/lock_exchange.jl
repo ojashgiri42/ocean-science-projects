@@ -26,7 +26,7 @@ const DEPTH = 20meters                  # channel depth (m)
 const FREE_SURFACE_GRAVITY = 9.81e5    # gravity used ONLY by the free surface (m/s^2), 100 000 x the real value.
                                         # A stiff free surface barely moves (max |eta| ~ 3e-7 m), so the model acts
                                         # like a rigid lid and total buoyancy is conserved to ~1e-8. With the real g,
-                                        # buoyancy leaked through the moving surface by ~1e-3 (see TUTORIAL step 1).
+                                        # buoyancy leaked through the moving surface by ~1e-3.
 
 """
     run_lock_exchange(; name, output_dir, kwargs...)
@@ -81,7 +81,7 @@ function run_lock_exchange(; name,
     grid = RectilinearGrid(CPU();
                            size = (Nx, Nz),
                            x = (0, LENGTH),
-                           z = (-DEPTH, 0),                    # fixed vertical grid (see TUTORIAL step 1)
+                           z = (-DEPTH, 0),                    # fixed vertical grid
                            halo = (5, 5),                      # wide enough for 5th-order WENO
                            topology = (Bounded, Flat, Bounded))   # walls at both ends, no y-direction
 
@@ -109,7 +109,7 @@ function run_lock_exchange(; name,
         simulation = Simulation(model; Δt = 1.0, stop_time = stop_time)   # start small; the wizard adjusts it
         # The wizard's own viscous check treats the Flat y-direction as 1 m wide, which would cap the step
         # at 0.2 * (1 m)^2 / νh (20 s for νh = 0.01). So I switch that check off and give the wizard the real
-        # viscous limit myself, from the actual cell sizes (see TUTORIAL step 1).
+        # viscous limit myself, from the actual cell sizes.
         viscous_limit = 0.2 * min(Δx^2 / νh, Δz^2 / νz)       # explicit viscosity is stable below ~ Δ^2 / (2ν)
         conjure_time_step_wizard!(simulation, IterationInterval(10);
                                   cfl = cfl,                               # advective CFL target
